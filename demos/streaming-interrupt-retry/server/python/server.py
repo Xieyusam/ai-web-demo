@@ -46,7 +46,9 @@ async def sse_generate(start_index: int = 0):
 
 @app.get("/sse/stream")
 async def sse_stream(request: Request):
-    last_event_id = request.headers.get("Last-Event-ID", "")
+    # 优先从 query 参数读取（前端手动续传时通过 URL 传递）
+    # 次选 Last-Event-ID 头（浏览器自动重连时携带）
+    last_event_id = request.query_params.get("lastEventId") or request.headers.get("Last-Event-ID", "")
     start_index = 0
     if last_event_id != "":
         try:

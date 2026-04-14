@@ -37,9 +37,9 @@ const SSE_CONTENT = [
 ];
 
 app.get('/sse/stream', (req, res) => {
-  const lastEventId = req.headers['last-event-id'] || '';
-  // lastEventId 格式为上一个收到段落的 index（字符串形式）
-  // 首次连接不传，从0开始；续传时传上次最后收到的 index+1
+  // 优先从 query 参数读取（前端手动续传时通过 URL 传递）
+  // 次选 Last-Event-ID 头（浏览器自动重连时携带）
+  const lastEventId = req.query.lastEventId || req.headers['last-event-id'] || '';
   let startIndex = 0;
   if (lastEventId !== '') {
     const parsed = parseInt(lastEventId);

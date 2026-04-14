@@ -451,18 +451,19 @@ async def websocket_endpoint(websocket: WebSocket):
         // =====================
         startSSE() {
           const url = `${this.baseUrl}/sse/stream`;
-          this.eventSource = new EventSource(url);
           this.streamActive = true;
           this.status = 'streaming';
           this.currentParagraph = '';
           this.resumeBanner = '';
           // 是否为续传（已接收过段落）
           const isResuming = this.lastEventId !== null;
+          const finalUrl = isResuming ? `${url}?lastEventId=${this.lastEventId}` : url;
           if (isResuming) {
             this.logs.push({ time: this.now(), msg: `[SSE] 续传模式，最后断点 id=${this.lastEventId}，将从 ${Number(this.lastEventId) + 1} 段继续`, type: 'info' });
           } else {
             this.logs.push({ time: this.now(), msg: `[SSE] 开始连接 ${url}`, type: 'info' });
           }
+          this.eventSource = new EventSource(finalUrl);
 
           this.eventSource.onmessage = (e) => {
             if (e.lastEventId !== '') {
