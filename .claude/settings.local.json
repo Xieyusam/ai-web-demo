@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__web-reader__webReader",
+      "Bash(claude /plugin marketplace add obra/superpowers-marketplace)",
+      "Bash(where claude:*)",
+      "Bash(CLAUDE_CODE_GIT_BASH_PATH=\"C:/Program Files/Git/bin/bash.exe\" claude /plugin marketplace add obra/superpowers-marketplace 2>&1)",
+      "Read(//c/Program Files/Git/**)",
+      "Read(//c/Program Files \\(x86\\)/Git/**)",
+      "Bash(find /c -name bash.exe)",
+      "Bash(cmd /c \"where bash\" 2>&1)",
+      "Bash(claude plugin:*)",
+      "Read(//usr/bin/**)",
+      "Read(//k/Git/bin/**)",
+      "Read(//bin/**)",
+      "Read(//cmd/**)",
+      "Read(//c/Git/bin/**)",
+      "Read(//c/git/bin/**)",
+      "Bash(CLAUDE_CODE_GIT_BASH_PATH=\"K:\\\\\\\\Git\\\\\\\\bin\\\\\\\\bash.exe\" claude plugin marketplace add obra/superpowers-marketplace 2>&1)",
+      "Bash(mount)",
+      "Bash(cygpath -w /bin/bash.exe)",
+      "Bash(CLAUDE_CODE_GIT_BASH_PATH=\"L:\\\\\\\\Program Files\\\\\\\\Git\\\\\\\\Git\\\\\\\\bin\\\\\\\\bash.exe\" claude plugin marketplace add obra/superpowers-marketplace 2>&1)",
+      "Bash(CLAUDE_CODE_GIT_BASH_PATH=\"L:\\\\\\\\Program Files\\\\\\\\Git\\\\\\\\Git\\\\\\\\bin\\\\\\\\bash.exe\" claude plugin install superpowers@superpowers-marketplace 2>&1)",
+      "Bash(CLAUDE_CODE_GIT_BASH_PATH=\"L:\\\\\\\\Program Files\\\\\\\\Git\\\\\\\\Git\\\\\\\\bin\\\\\\\\bash.exe\" claude plugin list 2>&1)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "mcp__zread__get_repo_structure",
+      "mcp__zread__search_doc",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=openspec+obra&per_page=5\")",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=OpenSpec+agentic+skills&per_page=5\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(f\"\"{r[''''full_name'''']}: {r[''''description'''']}\"\"\\) for r in data.get\\(''''items'''',[]\\)]\")",
+      "Bash(curl:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\(''''description'''',''''''''\\)\\); print\\(\\); print\\(d.get\\(''''homepage'''',''''''''\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(f{r[''''full_name'''']}: {r.get\\(''''description'''',''''''''\\)}\\) for r in data.get\\(''''items'''',[]\\)]\")",
+      "mcp__zread__read_file"
+    ]
+  }
+}
