@@ -68,29 +68,99 @@ async def sse_stream(request: Request):
 
 # =====================
 # WebSocket 端点（Step 3 & 4）
+# 服务器主动推送流式文本内容，支持 session 续传
 # =====================
+import random
+import string
+
+# session 池：sessionId -> { last_paragraph_id, task }
+sessions = {}
+
+def gen_session_id():
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+
+async def send_paragraph(websocket, session_id, paragraph_id):
+    if paragraph_id >= len(SSE_CONTENT):
+        return False
+    try:
+        await websocket.send_json({
+            "type": "paragraph",
+            "id": paragraph_id,
+            "text": SSE_CONTENT[paragraph_id],
+            "session_id": session_id,
+            "done": False
+        })
+        return True
+    except Exception:
+        return False
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    await websocket.send_json({"type": "connected", "data": "welcome"})
+    url = websocket.url
+    session_id_param = url.query_params.get("sessionId")
+    last_id_param = url.query_params.get("lastId")
+
+    if session_id_param and last_id_param:
+        # 续传模式
+        session_id = session_id_param
+        start_index = int(last_id_param) + 1
+        await websocket.send_json({
+            "type": "resume",
+            "session_id": session_id,
+            "resume_from": start_index,
+            "message": f"服务器已恢复，继续从第 {start_index + 1} 段推送"
+        })
+    else:
+        # 新连接
+        session_id = gen_session_id()
+        await websocket.send_json({
+            "type": "connected",
+            "session_id": session_id,
+            "message": f"连接成功，sessionId={session_id}，开始推送"
+        })
+        start_index = 0
+
+    idx = start_index
+    session_task = None
+
+    async def stream_task():
+        nonlocal idx, session_task
+        while idx < len(SSE_CONTENT):
+            ok = await send_paragraph(websocket, session_id, idx)
+            if not ok:
+                sessions[session_id] = {"last_paragraph_id": idx}
+                break
+            sessions[session_id] = {"last_paragraph_id": idx}
+            idx += 1
+            await asyncio.sleep(1.2)
+        else:
+            try:
+                await websocket.send_json({"type": "done", "session_id": session_id})
+            except Exception:
+                pass
+            if session_id in sessions:
+                del sessions[session_id]
+
+    async def background_stream():
+        await stream_task()
+
+    # 启动后台推送任务
+    task = asyncio.create_task(background_stream())
+    session_task = task
+
+    # 监听客户端关闭
     try:
         while True:
             data = await websocket.receive_text()
-            try:
-                msg = json.loads(data)
-                msg_type = msg.get("type")
-                if msg_type == "ping":
-                    await websocket.send_json({"type": "pong"})
-                elif msg_type == "message":
-                    await websocket.send_json({
-                        "type": "message",
-                        "data": f"echo: {msg.get('data')}",
-                        "timestamp": datetime.now().isoformat()
-                    })
-            except json.JSONDecodeError:
-                await websocket.send_json({"type": "error", "data": "invalid json"})
+            msg = json.loads(data)
+            if msg.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
     except Exception:
-        pass
+        # 客户端断开，取消后台任务
+        task.cancel()
+        sessions[session_id] = {"last_paragraph_id": idx}
+        print(f"WS session {session_id} paused at paragraph {idx}")
 
 
 if __name__ == "__main__":

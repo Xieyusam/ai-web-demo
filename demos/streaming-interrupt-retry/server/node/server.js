@@ -72,29 +72,97 @@ app.get('/sse/stream', (req, res) => {
 
 // =====================
 // WebSocket 端点（Step 3 & 4）
+// 服务器主动推送流式文本内容，支持 session 续传
 // =====================
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
+// session 池：sessionId -> { lastParagraphId, interval }
+const sessions = new Map();
+
+// 生成短 sessionId
+function genSessionId() {
+  return Math.random().toString(36).substring(2, 10);
+}
+
+// 推动一段内容给客户端
+function sendParagraph(ws, sessionId, paragraphId) {
+  if (ws.readyState !== ws.OPEN) return false;
+  ws.send(JSON.stringify({
+    type: 'paragraph',
+    id: paragraphId,
+    text: SSE_CONTENT[paragraphId],
+    sessionId,
+    done: false
+  }));
+  return true;
+}
+
+// 开始推送流（从指定段落开始）
+function startStream(ws, sessionId, startIndex) {
+  // 清除旧 interval
+  const existing = sessions.get(sessionId);
+  if (existing && existing.interval) clearInterval(existing.interval);
+
+  let idx = startIndex;
+  const interval = setInterval(() => {
+    if (idx >= SSE_CONTENT.length) {
+      clearInterval(interval);
+      sessions.delete(sessionId);
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: 'done', sessionId }));
+      }
+      return;
+    }
+    if (!sendParagraph(ws, sessionId, idx)) {
+      // 客户端断开，停止推送但保留 session
+      clearInterval(interval);
+      sessions.set(sessionId, { lastParagraphId: idx, interval: null });
+      console.log(`WS session ${sessionId} paused at paragraph ${idx}`);
+      return;
+    }
+    sessions.set(sessionId, { lastParagraphId: idx, interval });
+    idx++;
+  }, 1200);
+
+  sessions.set(sessionId, { lastParagraphId: idx - 1, interval });
+}
+
 wss.on('connection', (ws, req) => {
   const clientIp = req.socket.remoteAddress;
-  console.log(`WebSocket client connected from ${clientIp}`);
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const sessionIdParam = url.searchParams.get('sessionId');
+  const lastIdParam = url.searchParams.get('lastId');
 
-  ws.send(JSON.stringify({ type: 'connected', data: 'welcome' }));
+  if (sessionIdParam && lastIdParam) {
+    // 续传模式
+    const sessionId = sessionIdParam;
+    const startIndex = parseInt(lastIdParam) + 1;
+    console.log(`WS client reconnecting session=${sessionId} from paragraph ${startIndex}`);
+    ws.send(JSON.stringify({
+      type: 'resume',
+      sessionId,
+      resumeFrom: startIndex,
+      message: `服务器已恢复，继续从第 ${startIndex + 1} 段推送`
+    }));
+    startStream(ws, sessionId, startIndex);
+  } else {
+    // 新连接
+    const sessionId = genSessionId();
+    console.log(`WS new client session=${sessionId}`);
+    ws.send(JSON.stringify({
+      type: 'connected',
+      sessionId,
+      message: `连接成功，sessionId=${sessionId}，开始推送`
+    }));
+    startStream(ws, sessionId, 0);
+  }
 
   ws.on('message', (msg) => {
     try {
       const data = JSON.parse(msg.toString());
       if (data.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' }));
-        return;
-      }
-      if (data.type === 'message') {
-        ws.send(JSON.stringify({
-          type: 'message',
-          data: `echo: ${data.data}`,
-          timestamp: new Date().toISOString()
-        }));
       }
     } catch (e) {
       ws.send(JSON.stringify({ type: 'error', data: 'invalid json' }));
@@ -102,7 +170,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    console.log('WebSocket client disconnected');
+    console.log(`WS client disconnected`);
   });
 });
 
