@@ -29,7 +29,17 @@ python server.py
 
 ### 打开 Demo 页面
 
-直接在浏览器打开 `demo.html`，选择语言后体验。
+启动任一后端服务后，直接访问服务地址即可打开 Demo 页面：
+
+```bash
+# 启动 Node.js 后端 → 访问 http://localhost:8089
+cd demos/streaming-interrupt-retry/server/node && npm start
+
+# 或启动 Python 后端 → 访问 http://localhost:8088
+cd demos/streaming-interrupt-retry/server/python && .venv\Scripts\activate && python server.py
+```
+
+页面右上角可切换 Node.js / Python 语言。
 
 ## 步骤说明
 
