@@ -10,7 +10,7 @@
 cd demos/streaming-interrupt-retry/server/node
 npm install
 npm start
-# 服务运行在 http://localhost:3000
+# 服务运行在 http://localhost:8089
 ```
 
 ### 启动 Python 服务
@@ -48,7 +48,7 @@ python server.py
 
 ## 端口说明
 
-- Node.js 服务: `http://localhost:3000`
+- Node.js 服务: `http://localhost:8089`
 - Python 服务: `http://localhost:8088`
 
 demo.html 默认连接 Node.js 服务，切换语言后改为 Python 服务。

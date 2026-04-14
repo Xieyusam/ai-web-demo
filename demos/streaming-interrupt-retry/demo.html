@@ -227,10 +227,10 @@
 
       computed: {
         baseUrl() {
-          return this.lang === 'node' ? 'http://localhost:3000' : 'http://localhost:8088';
+          return this.lang === 'node' ? 'http://localhost:8089' : 'http://localhost:8088';
         },
         wsBaseUrl() {
-          return this.lang === 'node' ? 'ws://localhost:3000' : 'ws://localhost:8088';
+          return this.lang === 'node' ? 'ws://localhost:8089' : 'ws://localhost:8088';
         },
         statusClass() {
           if (this.status === 'streaming') return 'text-green-400';

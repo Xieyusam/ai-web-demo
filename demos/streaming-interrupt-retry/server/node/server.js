@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 
 const app = express();
-const PORT = 3000;
+const PORT = 8089;
 
 app.use(cors());
 app.use(express.json());
