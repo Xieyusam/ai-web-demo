@@ -80,13 +80,21 @@
         ></div>
       </div>
 
+      <!-- Resume Banner -->
+      <div v-if="resumeBanner" class="mb-3 p-3 bg-green-900/50 border border-green-500 rounded-lg text-green-300 text-sm font-mono">
+        {{ resumeBanner }}
+      </div>
+
       <!-- Paragraphs -->
       <div class="space-y-3 min-h-[200px]">
         <div
           v-for="(p, idx) in receivedParagraphs"
           :key="idx"
-          class="text-gray-200 text-sm leading-relaxed border-l-2 border-blue-500 pl-3 animate-fade-in"
-        >{{ p.text }}</div>
+          :class="p.isNew ? 'border-green-500' : 'border-gray-600'"
+          class="text-gray-200 text-sm leading-relaxed border-l-2 pl-3 animate-fade-in"
+        >
+          <span v-if="p.isNew" class="inline-block bg-green-600 text-xs px-1.5 py-0.5 rounded mb-1 font-mono">NEW</span>
+          {{ p.text }}</div>
 
         <div v-if="streamActive && !currentParagraph" class="text-gray-500 text-sm italic">
           等待内容...
@@ -222,6 +230,7 @@
           wsMessages: [],
           receivedParagraphs: [],
           currentParagraph: '',
+          resumeBanner: '',
           steps: [
             {
               title: 'Step 1 · SSE 基础流',
@@ -434,6 +443,7 @@ async def websocket_endpoint(websocket: WebSocket):
           this.wsMessages = [];
           this.wsConnected = false;
           this.status = 'idle';
+          this.resumeBanner = '';
         },
 
         // =====================
@@ -445,7 +455,14 @@ async def websocket_endpoint(websocket: WebSocket):
           this.streamActive = true;
           this.status = 'streaming';
           this.currentParagraph = '';
-          this.logs.push({ time: this.now(), msg: `[SSE] 开始连接 ${url}`, type: 'info' });
+          this.resumeBanner = '';
+          // 是否为续传（已接收过段落）
+          const isResuming = this.lastEventId !== null;
+          if (isResuming) {
+            this.logs.push({ time: this.now(), msg: `[SSE] 续传模式，最后断点 id=${this.lastEventId}，将从 ${Number(this.lastEventId) + 1} 段继续`, type: 'info' });
+          } else {
+            this.logs.push({ time: this.now(), msg: `[SSE] 开始连接 ${url}`, type: 'info' });
+          }
 
           this.eventSource.onmessage = (e) => {
             if (e.lastEventId !== '') {
@@ -457,12 +474,16 @@ async def websocket_endpoint(websocket: WebSocket):
               this.canRetry = true;
               this.status = 'idle';
               this.currentParagraph = '';
+              this.resumeBanner = '';
               this.eventSource.close();
             } else {
-              // 追加到已接收段落
-              this.receivedParagraphs.push({ id: e.lastEventId, text: e.data });
+              const isNew = isResuming;
+              this.receivedParagraphs.push({ id: e.lastEventId, text: e.data, isNew });
+              if (isResuming && !this.resumeBanner) {
+                this.resumeBanner = `✅ 续传成功！服务器从第 ${Number(e.lastEventId)} 段继续推送，已跳过前 ${Number(e.lastEventId)} 段`;
+              }
               this.currentParagraph = '';
-              this.logs.push({ time: this.now(), msg: `[SSE] 收到第 ${Number(e.lastEventId) + 1} 段 / id=${e.lastEventId}`, type: 'info' });
+              this.logs.push({ time: this.now(), msg: `[SSE] 收到第 ${Number(e.lastEventId) + 1} 段${isNew ? ' [NEW-续传]' : ''} / id=${e.lastEventId}`, type: 'info' });
             }
           };
 
@@ -497,7 +518,8 @@ async def websocket_endpoint(websocket: WebSocket):
           if (fromStart) {
             this.lastEventId = null;
             this.receivedParagraphs = [];
-            this.logs.push({ time: this.now(), msg: `[SSE] 重试（从头开始）`, type: 'info' });
+            this.resumeBanner = '';
+            this.logs.push({ time: this.now(), msg: `[SSE] 重试（从头开始，全部段落将重新接收）`, type: 'info' });
           } else {
             this.logs.push({
               time: this.now(),
