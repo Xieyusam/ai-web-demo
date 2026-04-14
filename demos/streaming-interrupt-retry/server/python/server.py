@@ -1,15 +1,25 @@
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import asyncio
 import json
+import os
 
 app = FastAPI()
+
+# 获取 server.py 所在目录的父目录（即 demo 根目录）
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEMO_ROOT = os.path.join(BASE_DIR, '../..')
+
+# 挂载静态文件
+app.mount("/static", StaticFiles(directory=DEMO_ROOT), name="static")
 
 
 @app.get("/")
 def root():
-    return JSONResponse({"status": "ok", "server": "python"})
+    demo_path = os.path.join(DEMO_ROOT, 'demo.html')
+    return FileResponse(demo_path)
 
 
 # =====================

@@ -2,15 +2,23 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = 8089;
 
+// Serve demo.html from the demo root
+const demoRoot = join(__dirname, '../../');
 app.use(cors());
 app.use(express.json());
+app.use(express.static(demoRoot));
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', server: 'node' });
+  res.sendFile(join(demoRoot, 'demo.html'));
 });
 
 // =====================
