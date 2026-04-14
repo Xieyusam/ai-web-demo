@@ -112,12 +112,12 @@
         </div>
 
         <!-- Prompt 表单 -->
-        <div class="flex gap-3 mb-4">
+        <div class="flex gap-3 mb-4 flex-wrap">
           <input
             v-model="aiPrompt"
             :disabled="aiConnected"
             placeholder="输入问题，如：什么是流式接口？"
-            class="bg-gray-700 border border-gray-600 px-4 py-2 rounded flex-1 font-mono text-sm text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            class="bg-gray-700 border border-gray-600 px-4 py-2 rounded flex-1 font-mono text-sm text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-50 min-w-[200px]"
             @keyup.enter="aiConnected ? null : startAIChat()"
           />
           <select v-model="aiModel" :disabled="aiConnected" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-sm text-gray-300 focus:outline-none disabled:opacity-50">
@@ -125,6 +125,12 @@
             <option value="claude-3">Claude-3</option>
             <option value="local">本地模型</option>
           </select>
+          <!-- 协议切换 -->
+          <div class="flex gap-1 items-center">
+            <span class="text-gray-500 text-xs mr-1">协议:</span>
+            <button @click="aiProtocol = 'sse'" :class="aiProtocol === 'sse' ? 'bg-cyan-600' : 'bg-gray-700'" :disabled="aiConnected" class="px-3 py-2 rounded text-sm transition-colors disabled:opacity-50">SSE</button>
+            <button @click="aiProtocol = 'ws'" :class="aiProtocol === 'ws' ? 'bg-cyan-600' : 'bg-gray-700'" :disabled="aiConnected" class="px-3 py-2 rounded text-sm transition-colors disabled:opacity-50">WS</button>
+          </div>
           <button
             v-if="!aiConnected"
             @click="startAIChat"
@@ -140,15 +146,20 @@
 
         <!-- AI 回复气泡 -->
         <div class="bg-gray-900 rounded p-4 min-h-[100px] mb-3 font-mono text-sm text-gray-200 leading-relaxed">
-          <span v-if="!aiConnected && !aiReceivedText">等待提问...</span>
+          <span v-if="!aiConnected && !aiReceivedText">等待提问... <span class="text-gray-500 text-xs">(当前协议: {{ aiProtocol.toUpperCase() }})</span></span>
           <span v-if="aiConnected && aiReceivedText === ''" class="text-gray-500">正在生成<span class="animate-pulse">...</span></span>
           <span>{{ aiReceivedText }}<span v-if="aiConnected" class="animate-pulse text-green-400">█</span></span>
         </div>
 
         <!-- 控制按钮 -->
-        <div class="flex gap-3">
-          <button @click="retryAI(false)" :disabled="!aiCanRetry" class="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-5 py-2 rounded font-mono text-sm">↺ 续传（lastChunkId={{ aiLastChunkId }})</button>
+        <div class="flex gap-3 flex-wrap">
+          <button @click="retryAI(false)" :disabled="!aiCanRetry" class="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-5 py-2 rounded font-mono text-sm">↺ 续传 <span class="text-xs opacity-75">({{ aiProtocol.toUpperCase() }}, lastEventId={{ aiLastEventId }})</span></button>
           <button @click="retryAI(true)" :disabled="!aiCanRetry" class="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 px-5 py-2 rounded font-mono text-sm">↺ 重头（新建 session）</button>
+          <!-- SSE vs WS 续传原理对比 -->
+          <div class="ml-auto text-xs text-gray-500 mt-1">
+            <span v-if="aiProtocol === 'sse'">SSE 续传：EventSource 自动带 Last-Event-ID 重连，浏览器行为</span>
+            <span v-else>WS 续传：URL 带 lastChunkId 参数，应用层处理</span>
+          </div>
         </div>
       </div>
 
@@ -264,12 +275,15 @@
           aiSessionId: null,
           aiPrompt: '什么是流式接口？请详细说明。',
           aiModel: 'gpt-4',
+          aiProtocol: 'sse',  // 'sse' | 'ws'
           aiConnected: false,
           aiCanRetry: false,
-          aiLastChunkId: null,
+          aiLastEventId: null,   // SSE: lastEventId (token index)
+          aiLastChunkId: null,    // WS: lastChunkId
           aiReceivedText: '',
           aiBufferedCount: 0,
           aiWs: null,
+          aiEs: null,  // EventSource for SSE
           steps: [
             {
               title: 'Step 1',
@@ -313,18 +327,19 @@
             },
             {
               title: 'Step 5',
-              principle: '企业级 AI 流式场景：客户端 POST 创建 session（携带 prompt），WebSocket 连接后服务器模拟 LLM 边生成 token 边推送，同时在服务端 buffer（模拟 Redis）。断开重连时，携带 lastChunkId 从断点续传，避免重复调用 LLM API，节省成本。',
-              langDesc: { node: 'Node.js · aiSessions Map + 续传判断', python: 'Python · 等效实现' },
+              principle: '企业级 AI 流式场景（支持 SSE / WS 双协议）。客户端 POST 创建 session（携带 prompt），服务器模拟 LLM 边生成 token 边推送，同时在服务端 buffer（模拟 Redis）。SSE 方案续传由浏览器 EventSource 自动处理（带 Last-Event-ID）；WS 方案需在 URL 带 lastChunkId 参数续传。',
+              langDesc: { node: 'Node.js · aiSessions Map + SSE/WS 双协议', python: 'Python · 等效实现' },
               code: {
-                node: `// 1. POST /api/chat → 创建 session，返回 sessionId\n// 2. WS /ws/chat?sessionId=xxx → 连接，接收流\n// 3. 续传：WS /ws/chat?sessionId=xxx&lastChunkId=N\n//    → 服务器从 session.chunks[N+1] 开始返回\n// 4. 重头：WS /ws/chat?sessionId=xxx → 新 session，重新调用 LLM`,
-                python: `# 同理，session 字典存 chunks 列表\n# last_sent_index 跟踪最后发送位置\n# 续传时从 last_sent_index + 1 继续发送`
+                node: `// SSE 方案（推荐）：EventSource 自动续传\n// POST /api/ai/sse/start → sessionId\n// GET  /api/ai/sse/stream?sessionId=xxx\n// → 续传时 EventSource 自动带 Last-Event-ID 重连\n\n// WS 方案：URL 参数手动续传\n// POST /api/ai/ws/start → sessionId\n// WS /ws/chat?sessionId=xxx&lastChunkId=N\n// → 服务器从 session.chunks[N+1] 开始返回`,
+                python: `# 同理，FastAPI 可实现完全相同的 SSE + WS 双协议`
               },
               points: [
-                'Step 1: 点击「发送」，POST /api/chat 创建 session',
-                'Step 2: WebSocket 连接，AI 逐 token 生成，观察「服务器 Buffer」中 buffered tokens 增加',
-                'Step 3: 点击「中断」，buffer 保留 lastSentIndex',
-                'Step 4: 点击「续传」，WebSocket 带 lastChunkId 重连，服务器从 buffer 取数据直接返回（不重新调用 LLM）',
-                'Step 5: 点击「重头」，不携带 lastChunkId，服务器重新调用 LLM（浪费！生产环境应避免）'
+                'Step 1: 选择协议（SSE / WS），点击「发送」',
+                'Step 2: POST 创建 session，EventSource / WebSocket 连接接收 token',
+                'Step 3: 观察「服务器 Buffer」中 buffered tokens 增加，实时可视化',
+                'Step 4: 点击「中断」，buffer 保留，lastEventId / lastChunkId 停在断点',
+                'Step 5: 点击「续传」— SSE: EventSource 自动带 Last-Event-ID 重连（浏览器行为）; WS: URL 带 lastChunkId 重连（应用层）',
+                'Step 6: 点击「重头」，服务器重新调用 LLM（生产环境应避免！）'
               ]
             }
           ]
@@ -479,113 +494,159 @@
           this.logs = [];
           this.aiReceivedText = '';
           this.aiBufferedCount = 0;
+          this.aiLastEventId = null;
           this.aiLastChunkId = null;
           this.aiCanRetry = false;
           this.aiConnected = false;
+          if (this.aiEs) { this.aiEs.close(); this.aiEs = null; }
+          if (this.aiWs) { this.aiWs.close(); this.aiWs = null; }
 
-          // 1. 创建 session
-          const res = await fetch(`${this.baseUrl}/api/chat`, {
+          const endpoint = this.aiProtocol === 'sse' ? '/api/ai/sse/start' : '/api/ai/ws/start';
+          const res = await fetch(`${this.baseUrl}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: this.aiPrompt, model: this.aiModel })
           });
           const { sessionId } = await res.json();
           this.aiSessionId = sessionId;
-          this.logs.push({ time: this.now(), msg: `[AI] POST /api/chat → sessionId=${sessionId}`, type: 'info' });
+          this.logs.push({ time: this.now(), msg: `[AI] POST ${endpoint} → sessionId=${sessionId} (${this.aiProtocol.toUpperCase()})`, type: 'info' });
 
-          // 2. WebSocket 连接
-          this.aiWs = new WebSocket(`${this.aiWsUrl}/ws/chat?sessionId=${sessionId}`);
+          if (this.aiProtocol === 'sse') {
+            this._startAISSE(sessionId);
+          } else {
+            this._startAIWS(sessionId);
+          }
+        },
+
+        _startAISSE(sessionId) {
+          const url = `${this.baseUrl}/api/ai/sse/stream?sessionId=${sessionId}`;
+          this.aiEs = new EventSource(url);
           this.aiConnected = true;
+          this.logs.push({ time: this.now(), msg: `[AI] EventSource 连接 SSE，等待 token...`, type: 'info' });
 
-          this.aiWs.onopen = () => {
-            this.logs.push({ time: this.now(), msg: `[AI] WebSocket 连接成功，等待 token...`, type: 'info' });
-          };
+          this.aiEs.addEventListener('system', (e) => {
+            this.logs.push({ time: this.now(), msg: `[AI SSE] ${e.data}`, type: 'info' });
+          });
 
-          this.aiWs.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            this.logs.push({ time: this.now(), msg: `[AI] ← ${JSON.stringify(data).substring(0, 100)}`, type: 'info' });
+          this.aiEs.addEventListener('chunk', (e) => {
+            this.aiLastEventId = e.lastEventId;
+            this.aiBufferedCount = Number(e.lastEventId) + 1;
+            this.aiReceivedText += e.data;
+            this.logs.push({ time: this.now(), msg: `[AI SSE] token ${e.lastEventId}: ${e.data}`, type: 'info' });
+          });
 
-            if (data.type === 'start') {
-              // 新连接开始
-            } else if (data.type === 'resume') {
-              this.aiReceivedText = '(续传恢复) ';
-              this.logs.push({ time: this.now(), msg: `[AI] ✅ 续传成功：${data.message}`, type: 'info' });
-            } else if (data.type === 'chunk') {
-              this.aiLastChunkId = data.id;
-              this.aiBufferedCount = data.id + 1;
-              if (data.buffered) {
-                // 续传时已缓冲的 chunk 不重复追加到显示
-              } else {
-                this.aiReceivedText += data.text;
-              }
-            } else if (data.type === 'done') {
-              this.aiConnected = false;
-              this.aiCanRetry = true;
-              this.logs.push({ time: this.now(), msg: `[AI] 生成完毕，lastChunkId=${data.id}`, type: 'info' });
-            }
-          };
+          this.aiEs.addEventListener('done', (e) => {
+            this.aiConnected = false;
+            this.aiCanRetry = true;
+            this.logs.push({ time: this.now(), msg: `[AI SSE] 生成完毕，lastEventId=${this.aiLastEventId}`, type: 'info' });
+            this.aiEs.close();
+          });
 
-          this.aiWs.onerror = () => {
-            this.logs.push({ time: this.now(), msg: `[AI] 连接错误`, type: 'error' });
-          };
-
-          this.aiWs.onclose = () => {
+          this.aiEs.onerror = () => {
             if (this.aiConnected) {
               this.aiConnected = false;
               this.aiCanRetry = true;
-              this.logs.push({ time: this.now(), msg: `[AI] 连接关闭，lastChunkId=${this.aiLastChunkId}，可续传`, type: 'error' });
+              this.logs.push({ time: this.now(), msg: `[AI SSE] 连接断开，lastEventId=${this.aiLastEventId}，可续传`, type: 'error' });
+              this.aiEs.close();
             }
           };
         },
 
-        interruptAI() {
-          if (this.aiWs) {
-            this.aiWs.close();
+        _startAIWS(sessionId) {
+          this.aiWs = new WebSocket(`${this.aiWsUrl}/ws/chat?sessionId=${sessionId}`);
+          this.aiConnected = true;
+          this.logs.push({ time: this.now(), msg: `[AI] WebSocket 连接，等待 token...`, type: 'info' });
+
+          this.aiWs.onopen = () => {};
+          this.aiWs.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            this.logs.push({ time: this.now(), msg: `[AI WS] ← ${JSON.stringify(data).substring(0, 80)}`, type: 'info' });
+            if (data.type === 'resume') {
+              this.aiReceivedText = '(续传恢复) ';
+            } else if (data.type === 'chunk') {
+              this.aiLastChunkId = data.id;
+              this.aiBufferedCount = data.id + 1;
+              if (!data.buffered) this.aiReceivedText += data.text;
+            } else if (data.type === 'done') {
+              this.aiConnected = false;
+              this.aiCanRetry = true;
+            }
+          };
+          this.aiWs.onerror = () => { this.aiCanRetry = true; };
+          this.aiWs.onclose = () => {
             this.aiConnected = false;
-            this.aiCanRetry = true;
-            this.logs.push({ time: this.now(), msg: `[AI] 手动中断，buffer 中有 ${this.aiBufferedCount} 个 token，lastChunkId=${this.aiLastChunkId}`, type: 'error' });
+            if (this.aiLastChunkId !== null) this.aiCanRetry = true;
+          };
+        },
+
+        interruptAI() {
+          if (this.aiProtocol === 'sse') {
+            if (this.aiEs) { this.aiEs.close(); this.aiEs = null; }
+            this.logs.push({ time: this.now(), msg: `[AI SSE] 手动中断，lastEventId=${this.aiLastEventId}，buffer ${this.aiBufferedCount} tokens`, type: 'error' });
+          } else {
+            if (this.aiWs) { this.aiWs.close(); this.aiWs = null; }
+            this.logs.push({ time: this.now(), msg: `[AI WS] 手动中断，lastChunkId=${this.aiLastChunkId}，buffer ${this.aiBufferedCount} tokens`, type: 'error' });
           }
+          this.aiConnected = false;
+          this.aiCanRetry = true;
         },
 
         retryAI(fromStart) {
           if (fromStart) {
             this.aiSessionId = null;
+            this.aiLastEventId = null;
             this.aiLastChunkId = null;
             this.aiBufferedCount = 0;
             this.aiReceivedText = '';
             this.aiCanRetry = false;
             this.aiConnected = false;
-            this.logs.push({ time: this.now(), msg: `[AI] 重试（新建 session，从头开始，重新调用 LLM）⚠️ 浪费！`, type: 'error' });
+            this.logs.push({ time: this.now(), msg: `[AI] 重头（新建 session，重新调用 LLM）⚠️ 浪费！`, type: 'error' });
             this.startAIChat();
-          } else {
-            if (!this.aiSessionId) return;
-            this.aiReceivedText = '(续传) ';
-            this.aiCanRetry = false;
-            this.aiConnected = false;
-            const lastId = this.aiLastChunkId;
-            this.logs.push({ time: this.now(), msg: `[AI] 续传，携带 lastChunkId=${lastId}，服务器从 buffer 直接返回后续 token`, type: 'info' });
+            return;
+          }
 
+          if (!this.aiSessionId) return;
+          this.aiReceivedText = '';
+          this.aiCanRetry = false;
+          this.aiConnected = false;
+          if (this.aiProtocol === 'sse') {
+            if (this.aiEs) { this.aiEs.close(); this.aiEs = null; }
+            const lastId = this.aiLastEventId;
+            const url = `${this.baseUrl}/api/ai/sse/stream?sessionId=${this.aiSessionId}&lastEventId=${lastId}`;
+            this.logs.push({ time: this.now(), msg: `[AI SSE] 续传，EventSource 带 Last-Event-ID=${lastId} 重连`, type: 'info' });
+            this.aiEs = new EventSource(url);
+            this.aiConnected = true;
+            this.aiEs.addEventListener('system', (e) => {
+              this.aiReceivedText = '(续传) ';
+              this.logs.push({ time: this.now(), msg: `[AI SSE] ${e.data}`, type: 'info' });
+            });
+            this.aiEs.addEventListener('chunk', (e) => {
+              this.aiLastEventId = e.lastEventId;
+              this.aiBufferedCount = Number(e.lastEventId) + 1;
+              this.aiReceivedText += e.data;
+            });
+            this.aiEs.addEventListener('done', () => {
+              this.aiConnected = false; this.aiCanRetry = true; this.aiEs.close();
+            });
+            this.aiEs.onerror = () => {
+              this.aiConnected = false; this.aiCanRetry = true; this.aiEs.close();
+            };
+          } else {
+            if (this.aiWs) { this.aiWs.close(); this.aiWs = null; }
+            const lastId = this.aiLastChunkId;
+            this.logs.push({ time: this.now(), msg: `[AI WS] 续传，URL 带 lastChunkId=${lastId} 重连`, type: 'info' });
             const ws = new WebSocket(`${this.aiWsUrl}/ws/chat?sessionId=${this.aiSessionId}&lastChunkId=${lastId}`);
             this.aiWs = ws;
-
             ws.onopen = () => { this.aiConnected = true; };
             ws.onmessage = (e) => {
               const data = JSON.parse(e.data);
-              if (data.type === 'resume') {
-                this.logs.push({ time: this.now(), msg: `[AI] ✅ 续传成功：${data.message}`, type: 'info' });
-              } else if (data.type === 'chunk') {
-                this.aiLastChunkId = data.id;
-                this.aiBufferedCount = data.id + 1;
+              if (data.type === 'resume') { this.aiReceivedText = '(续传) '; }
+              else if (data.type === 'chunk') {
+                this.aiLastChunkId = data.id; this.aiBufferedCount = data.id + 1;
                 if (!data.buffered) this.aiReceivedText += data.text;
-              } else if (data.type === 'done') {
-                this.aiConnected = false;
-                this.aiCanRetry = true;
-              }
+              } else if (data.type === 'done') { this.aiConnected = false; this.aiCanRetry = true; }
             };
-            ws.onclose = () => {
-              this.aiConnected = false;
-              if (this.aiLastChunkId !== null) this.aiCanRetry = true;
-            };
+            ws.onclose = () => { this.aiConnected = false; if (this.aiLastChunkId !== null) this.aiCanRetry = true; };
             ws.onerror = () => { this.aiCanRetry = true; };
           }
         },
