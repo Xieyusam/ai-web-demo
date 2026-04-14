@@ -17,29 +17,21 @@
     </div>
 
     <!-- Step Tabs -->
-    <div class="flex gap-2 mb-5">
+    <div class="flex gap-2 mb-5 flex-wrap">
       <button
         v-for="(step, idx) in steps"
         :key="idx"
         @click="currentStep = idx; resetStream()"
         :class="currentStep === idx ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'"
-        class="px-4 py-2 rounded font-mono text-sm transition-colors"
+        class="px-3 py-2 rounded font-mono text-sm transition-colors"
       >{{ step.title }}</button>
     </div>
 
     <!-- Language Toggle -->
     <div class="flex gap-2 mb-5 items-center">
       <span class="text-gray-400 text-sm mr-2">语言：</span>
-      <button
-        @click="lang = 'node'"
-        :class="lang === 'node' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'"
-        class="px-4 py-2 rounded text-sm transition-colors"
-      >Node.js</button>
-      <button
-        @click="lang = 'python'"
-        :class="lang === 'python' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'"
-        class="px-4 py-2 rounded text-sm transition-colors"
-      >Python</button>
+      <button @click="lang = 'node'" :class="lang === 'node' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'" class="px-4 py-2 rounded text-sm transition-colors">Node.js</button>
+      <button @click="lang = 'python'" :class="lang === 'python' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'" class="px-4 py-2 rounded text-sm transition-colors">Python</button>
       <span class="ml-4 text-gray-500 text-xs font-mono">{{ baseUrl }}</span>
     </div>
 
@@ -64,123 +56,168 @@
     </div>
 
     <!-- =====================
-         SSE Text Display Area (Step 1 & 2)
+         Step 1 & 2 — SSE Text Display
          ===================== -->
-    <div v-if="currentStep < 2" class="bg-gray-800 rounded-lg p-5 mb-5">
+    <div v-if="currentStep === 0 || currentStep === 1" class="bg-gray-800 rounded-lg p-5 mb-5">
       <div class="flex justify-between items-center mb-3">
         <span class="text-gray-400 text-sm font-semibold">📖 文本阅读区</span>
         <span class="text-xs font-mono text-gray-500">{{ receivedParagraphs.length }} / 8 段</span>
       </div>
-
-      <!-- Resume Banner -->
-      <div v-if="resumeBanner" class="mb-3 p-3 bg-green-900/50 border border-green-500 rounded-lg text-green-300 text-sm font-mono">
-        {{ resumeBanner }}
-      </div>
-
-      <!-- Progress bar -->
+      <div v-if="resumeBanner" class="mb-3 p-3 bg-green-900/50 border border-green-500 rounded-lg text-green-300 text-sm font-mono">{{ resumeBanner }}</div>
       <div class="w-full bg-gray-700 rounded-full h-1.5 mb-4">
-        <div
-          class="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-          :style="{ width: (receivedParagraphs.length / 8 * 100) + '%' }"
-        ></div>
+        <div class="bg-blue-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: (receivedParagraphs.length / 8 * 100) + '%' }"></div>
       </div>
-
-      <!-- Paragraphs -->
-      <div class="space-y-3 min-h-[200px]">
-        <div
-          v-for="(p, idx) in receivedParagraphs"
-          :key="idx"
-          :class="p.isNew ? 'border-green-500' : 'border-gray-600'"
-          class="text-gray-200 text-sm leading-relaxed border-l-2 pl-3"
-        >
+      <div class="space-y-3 min-h-[160px]">
+        <div v-for="(p, idx) in receivedParagraphs" :key="idx" :class="p.isNew ? 'border-green-500' : 'border-gray-600'" class="text-gray-200 text-sm leading-relaxed border-l-2 pl-3">
           <span v-if="p.isNew" class="inline-block bg-green-600 text-xs px-1.5 py-0.5 rounded mb-1 font-mono">NEW</span>
           {{ p.text }}</div>
-
-        <div v-if="!streamActive && receivedParagraphs.length === 0" class="text-gray-600 text-sm text-center pt-8">
-          点击下方「开始流」按钮开始阅读
-        </div>
+        <div v-if="!streamActive && receivedParagraphs.length === 0" class="text-gray-600 text-sm text-center pt-8">点击下方「开始流」按钮开始阅读</div>
       </div>
     </div>
 
     <!-- =====================
-         WebSocket Text Display Area (Step 3 & 4)
+         Step 3 & 4 — WS Text Display
          ===================== -->
-    <div v-if="currentStep >= 2" class="bg-gray-800 rounded-lg p-5 mb-5">
+    <div v-if="currentStep === 2 || currentStep === 3" class="bg-gray-800 rounded-lg p-5 mb-5">
       <div class="flex justify-between items-center mb-3">
         <span class="text-gray-400 text-sm font-semibold">📖 WebSocket 推送区</span>
         <span class="flex gap-3 items-center">
           <span v-if="wsSessionId" class="text-gray-500 text-xs font-mono">session: {{ wsSessionId }}</span>
-          <span :class="wsConnected ? 'text-green-400' : 'text-gray-500'" class="text-xs font-mono">
-            {{ wsConnected ? '已连接，推送中' : '未连接' }}
-          </span>
+          <span :class="wsConnected ? 'text-green-400' : 'text-gray-500'" class="text-xs font-mono">{{ wsConnected ? '已连接，推送中' : '未连接' }}</span>
         </span>
       </div>
-
-      <!-- Resume Banner -->
-      <div v-if="wsResumeBanner" class="mb-3 p-3 bg-green-900/50 border border-green-500 rounded-lg text-green-300 text-sm font-mono">
-        {{ wsResumeBanner }}
-      </div>
-
-      <!-- Progress bar -->
+      <div v-if="wsResumeBanner" class="mb-3 p-3 bg-green-900/50 border border-green-500 rounded-lg text-green-300 text-sm font-mono">{{ wsResumeBanner }}</div>
       <div class="w-full bg-gray-700 rounded-full h-1.5 mb-4">
-        <div
-          class="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
-          :style="{ width: (wsReceivedParagraphs.length / 8 * 100) + '%' }"
-        ></div>
+        <div class="bg-purple-500 h-1.5 rounded-full transition-all duration-300" :style="{ width: (wsReceivedParagraphs.length / 8 * 100) + '%' }"></div>
       </div>
-
-      <!-- Paragraphs -->
-      <div class="space-y-3 min-h-[150px]">
-        <div
-          v-for="(p, idx) in wsReceivedParagraphs"
-          :key="idx"
-          :class="p.isNew ? 'border-purple-500' : 'border-gray-600'"
-          class="text-gray-200 text-sm leading-relaxed border-l-2 pl-3"
-        >
+      <div class="space-y-3 min-h-[120px]">
+        <div v-for="(p, idx) in wsReceivedParagraphs" :key="idx" :class="p.isNew ? 'border-purple-500' : 'border-gray-600'" class="text-gray-200 text-sm leading-relaxed border-l-2 pl-3">
           <span v-if="p.isNew" class="inline-block bg-purple-600 text-xs px-1.5 py-0.5 rounded mb-1 font-mono">NEW</span>
           {{ p.text }}</div>
+        <div v-if="wsConnected && wsReceivedParagraphs.length === 0" class="text-gray-500 text-sm italic">等待服务器推送...</div>
+        <div v-if="!wsConnected && wsReceivedParagraphs.length === 0" class="text-gray-600 text-sm text-center pt-8">点击下方「开始流」建立 WebSocket 连接</div>
+      </div>
+    </div>
 
-        <div v-if="wsConnected && wsReceivedParagraphs.length === 0" class="text-gray-500 text-sm italic">
-          等待服务器推送...
+    <!-- =====================
+         Step 5 — AI 流式模拟（企业级 LLM 代理）
+         ===================== -->
+    <div v-if="currentStep === 4" class="space-y-4">
+
+      <!-- Prompt 输入区 -->
+      <div class="bg-gray-800 rounded-lg p-5">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-gray-400 text-sm font-semibold">💬 AI 对话（模拟 LLM 流式响应）</span>
+          <span v-if="aiSessionId" class="text-gray-500 text-xs font-mono">session: {{ aiSessionId }}</span>
         </div>
-        <div v-if="!wsConnected && wsReceivedParagraphs.length === 0" class="text-gray-600 text-sm text-center pt-8">
-          点击下方「开始流」建立 WebSocket 连接
+
+        <!-- Prompt 表单 -->
+        <div class="flex gap-3 mb-4">
+          <input
+            v-model="aiPrompt"
+            :disabled="aiConnected"
+            placeholder="输入问题，如：什么是流式接口？"
+            class="bg-gray-700 border border-gray-600 px-4 py-2 rounded flex-1 font-mono text-sm text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            @keyup.enter="aiConnected ? null : startAIChat()"
+          />
+          <select v-model="aiModel" :disabled="aiConnected" class="bg-gray-700 border border-gray-600 px-3 py-2 rounded text-sm text-gray-300 focus:outline-none disabled:opacity-50">
+            <option value="gpt-4">GPT-4</option>
+            <option value="claude-3">Claude-3</option>
+            <option value="local">本地模型</option>
+          </select>
+          <button
+            v-if="!aiConnected"
+            @click="startAIChat"
+            :disabled="aiConnected || !aiPrompt.trim()"
+            class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors"
+          >发送</button>
+          <button
+            v-if="aiConnected"
+            @click="interruptAI"
+            class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded font-mono text-sm transition-colors"
+          >中断</button>
+        </div>
+
+        <!-- AI 回复气泡 -->
+        <div class="bg-gray-900 rounded p-4 min-h-[100px] mb-3 font-mono text-sm text-gray-200 leading-relaxed">
+          <span v-if="!aiConnected && !aiReceivedText">等待提问...</span>
+          <span v-if="aiConnected && aiReceivedText === ''" class="text-gray-500">正在生成<span class="animate-pulse">...</span></span>
+          <span>{{ aiReceivedText }}<span v-if="aiConnected" class="animate-pulse text-green-400">█</span></span>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="flex gap-3">
+          <button @click="retryAI(false)" :disabled="!aiCanRetry" class="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-5 py-2 rounded font-mono text-sm">↺ 续传（lastChunkId={{ aiLastChunkId }})</button>
+          <button @click="retryAI(true)" :disabled="!aiCanRetry" class="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 px-5 py-2 rounded font-mono text-sm">↺ 重头（新建 session）</button>
+        </div>
+      </div>
+
+      <!-- 服务器 Buffer 状态（模拟 Redis）-->
+      <div class="bg-gray-800 rounded-lg p-5">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-gray-400 text-sm font-semibold">🗄️ 服务器 Buffer（模拟 Redis 存储）</span>
+          <span class="text-xs font-mono text-gray-500">数据来源：服务端 aiSessions Map</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div class="bg-gray-900 rounded p-3">
+            <div class="text-gray-500 text-xs mb-1">sessionId</div>
+            <div class="text-green-400 font-mono text-sm">{{ aiSessionId || '—' }}</div>
+          </div>
+          <div class="bg-gray-900 rounded p-3">
+            <div class="text-gray-500 text-xs mb-1">当前模型</div>
+            <div class="text-green-400 font-mono text-sm">{{ aiModel }}</div>
+          </div>
+          <div class="bg-gray-900 rounded p-3">
+            <div class="text-gray-500 text-xs mb-1">buffered tokens</div>
+            <div class="text-green-400 font-mono text-sm">{{ aiBufferedCount }} / {{ AI_TOTAL_TOKENS }}</div>
+          </div>
+          <div class="bg-gray-900 rounded p-3">
+            <div class="text-gray-500 text-xs mb-1">lastSentIndex</div>
+            <div class="text-green-400 font-mono text-sm">{{ aiLastChunkId !== null ? aiLastChunkId : '—' }}</div>
+          </div>
+        </div>
+
+        <!-- Buffer 可视化 -->
+        <div class="bg-gray-900 rounded p-3">
+          <div class="text-gray-500 text-xs mb-2">token buffer（已生成 / 待发送）</div>
+          <div class="flex gap-1 flex-wrap">
+            <span
+              v-for="i in AI_TOTAL_TOKENS"
+              :key="i"
+              :class="i <= aiBufferedCount ? 'bg-blue-600' : (i === aiBufferedCount + 1 ? 'bg-yellow-600 animate-pulse' : 'bg-gray-700')"
+              class="inline-block w-6 h-6 rounded text-xs font-mono flex items-center justify-center"
+            >{{ i - 1 }}</span>
+          </div>
+        </div>
+
+        <!-- 续传 vs 重头对比说明 -->
+        <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div class="bg-yellow-900/30 border border-yellow-600 rounded p-3">
+            <div class="text-yellow-400 font-semibold mb-1">↺ 续传（推荐）</div>
+            <div class="text-gray-400">携带 <code class="text-yellow-300">lastChunkId={{ aiLastChunkId }}</code> 重连</div>
+            <div class="text-gray-400">服务器从 buffer 取数据，直接返回</div>
+            <div class="text-gray-400">token 不丢失，体验流畅</div>
+            <div class="text-gray-500 mt-1">企业方案：Redis 存 session，续传时只查缓存</div>
+          </div>
+          <div class="bg-orange-900/30 border border-orange-600 rounded p-3">
+            <div class="text-orange-400 font-semibold mb-1">↺ 重头（浪费资源）</div>
+            <div class="text-gray-400">不携带 lastChunkId，新建 session</div>
+            <div class="text-gray-400">服务器重新调用 LLM API</div>
+            <div class="text-gray-400">token 重复生成，延迟高，成本浪费</div>
+            <div class="text-gray-500 mt-1">生产环境应避免！断网重连必须续传</div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Control Panel -->
-    <div class="flex gap-3 mb-5 items-center flex-wrap">
-      <button
-        @click="startStream"
-        :disabled="streamActive"
-        class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors"
-      >▶ 开始流</button>
-
-      <button
-        @click="interruptStream"
-        :disabled="!streamActive"
-        class="bg-red-600 hover:bg-red-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors"
-      >⏹ 中断</button>
-
-      <button
-        @click="retryStream(false)"
-        :disabled="!canRetry"
-        class="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors"
-      >↺ 重试（续传）</button>
-
-      <button
-        @click="retryStream(true)"
-        :disabled="!canRetry"
-        class="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors"
-      >↺ 重试（重头）</button>
-
-      <span class="ml-4 text-gray-400 font-mono text-sm">
-        状态: <span :class="statusClass">{{ statusText }}</span>
-      </span>
-      <span v-if="wsLastId !== null && canRetry && currentStep >= 2" class="text-gray-500 font-mono text-xs">
-        断点: 第 {{ Number(wsLastId) + 1 }} 段 → 将从第 {{ Number(wsLastId) + 2 }} 段继续
-      </span>
+    <!-- Control Panel (Step 1-3) -->
+    <div v-if="currentStep < 4" class="flex gap-3 mb-5 items-center flex-wrap">
+      <button @click="startStream" :disabled="streamActive" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors">▶ 开始流</button>
+      <button @click="interruptStream" :disabled="!streamActive" class="bg-red-600 hover:bg-red-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors">⏹ 中断</button>
+      <button @click="retryStream(false)" :disabled="!canRetry" class="bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors">↺ 重试（续传）</button>
+      <button @click="retryStream(true)" :disabled="!canRetry" class="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 px-6 py-2 rounded font-mono text-sm transition-colors">↺ 重试（重头）</button>
+      <span class="ml-4 text-gray-400 font-mono text-sm">状态: <span :class="statusClass">{{ statusText }}</span></span>
     </div>
 
     <!-- Raw Log -->
@@ -191,12 +228,7 @@
       </div>
       <div class="bg-gray-900 rounded p-3 h-48 overflow-y-auto font-mono text-xs">
         <div v-if="logs.length === 0" class="text-gray-600 text-center pt-6">暂无日志</div>
-        <div
-          v-for="(log, idx) in logs"
-          :key="idx"
-          :class="logClass(log.type)"
-          class="mb-1 break-all"
-        >
+        <div v-for="(log, idx) in logs" :key="idx" :class="logClass(log.type)" class="mb-1 break-all">
           <span class="text-gray-600">[{{ log.time }}]</span>
           <span class="ml-2">{{ log.msg }}</span>
         </div>
@@ -207,6 +239,7 @@
 
   <script>
     const { createApp } = Vue;
+    const AI_TOTAL_TOKENS = 90; // AI_CHUNKS.length in server
 
     createApp({
       data() {
@@ -227,158 +260,71 @@
           wsResumeBanner: '',
           resumeBanner: '',
           receivedParagraphs: [],
-          wsInput: '',
+          // Step 5 AI
+          aiSessionId: null,
+          aiPrompt: '什么是流式接口？请详细说明。',
+          aiModel: 'gpt-4',
+          aiConnected: false,
+          aiCanRetry: false,
+          aiLastChunkId: null,
+          aiReceivedText: '',
+          aiBufferedCount: 0,
+          aiWs: null,
           steps: [
             {
-              title: 'Step 1 · SSE 基础流',
-              principle: 'SSE（Server-Sent Events）是服务器向浏览器单向推送的技术。服务器将文本内容分成多个段落，逐步发送。浏览器实时接收并显示每段内容，直到全部接收完毕。点击下方按钮开始阅读，观察文本区逐段出现。',
-              langDesc: {
-                node: 'Node.js · Express SSE · 段落流式推送',
-                python: 'Python · FastAPI · StreamingResponse'
-              },
+              title: 'Step 1',
+              principle: 'SSE（Server-Sent Events）是服务器向浏览器单向推送的技术。服务器将文本内容分成多个段落，逐步发送。浏览器实时接收并显示每段内容，直到全部接收完毕。',
+              langDesc: { node: 'Node.js · Express SSE', python: 'Python · FastAPI StreamingResponse' },
               code: {
-                node: `// SSE 内容分段落推送
-const SSE_CONTENT = [
-  "【第一段】流式接口是一种数据传输技术...",
-  "【第二段】与传统的请求-响应模式不同...",
-];
-app.get('/sse/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  let idx = 0;
-  const interval = setInterval(() => {
-    if (idx >= SSE_CONTENT.length) { res.end(); return; }
-    res.write(\`id: \${idx}\\nevent: message\\ndata: \${SSE_CONTENT[idx]}\\n\\n\`);
-    idx++;
-  }, 1200);
-});`,
-                python: `SSE_CONTENT = ["【第一段】...", "【第二段】..."]
-async def sse_generate():
-    for idx in range(len(SSE_CONTENT)):
-        await asyncio.sleep(1.2)
-        yield f"id: {idx}\\nevent: message\\ndata: {SSE_CONTENT[idx]}\\n\\n"
-@app.get("/sse/stream")
-async def sse_stream():
-    return StreamingResponse(sse_generate(), media_type="text/event-stream")`
+                node: `res.setHeader('Content-Type', 'text/event-stream');\nlet idx = 0;\nconst interval = setInterval(() => {\n  if (idx >= SSE_CONTENT.length) { res.end(); return; }\n  res.write(\`id: \${idx}\\nevent: message\\ndata: \${SSE_CONTENT[idx]}\\n\\n\`);\n  idx++;\n}, 1200);`,
+                python: `@app.get("/sse/stream")\nasync def sse_stream():\n    return StreamingResponse(\n        sse_generate(),\n        media_type="text/event-stream"\n    )`
               },
-              points: [
-                '点击「开始流」，观察文本区逐段出现（蓝色边框）',
-                '进度条实时推进，观察当前段落 / 总段数',
-                '全部接收后状态变为「空闲」',
-                '点击「中断」可随时终止阅读'
-              ]
+              points: ['点击「开始流」，观察文本区逐段出现', '进度条实时推进', '点击「中断」可随时终止']
             },
             {
-              title: 'Step 2 · SSE 续传（核心）',
-              principle: '续传是 SSE 最核心的能力。当连接中断后，服务器根据客户端传来的断点 ID，从断点继续发送剩余段落，而非从头开始。避免了已接收数据的重复传输，真正实现了「断点续传」。',
-              langDesc: {
-                node: 'Node.js · 读取 query.lastEventId 续传',
-                python: 'Python · FastAPI 读取 query.lastEventId'
-              },
+              title: 'Step 2',
+              principle: '续传是 SSE 最核心的能力。连接中断后，服务器根据断点 ID 从断点继续发送剩余段落，而非从头开始，避免重复传输。',
+              langDesc: { node: 'Node.js · query.lastEventId', python: 'Python · query_params.lastEventId' },
               code: {
-                node: `// 从 query 参数读取断点位置
-app.get('/sse/stream', (req, res) => {
-  const lastId = req.query.lastEventId || req.headers['last-event-id'];
-  let startIndex = lastId ? parseInt(lastId) + 1 : 0;
-  res.setHeader('Content-Type', 'text/event-stream');
-  let idx = startIndex;
-  const interval = setInterval(() => {
-    if (idx >= SSE_CONTENT.length) { res.end(); return; }
-    res.write(\`id: \${idx}\\nevent: message\\ndata: \${SSE_CONTENT[idx]}\\n\\n\`);
-    idx++;
-  }, 1200);
-});`,
-                python: `@app.get("/sse/stream")
-async def sse_stream(request: Request):
-    last_id = request.query_params.get("lastEventId") or request.headers.get("Last-Event-ID")
-    start_index = int(last_id) + 1 if last_id else 0
-    return StreamingResponse(sse_generate(start_index), media_type="text/event-stream")`
+                node: `// 续传：从 query 参数读取断点\nconst lastId = req.query.lastEventId || req.headers['last-event-id'];\nlet startIndex = lastId ? parseInt(lastId) + 1 : 0;`,
+                python: `last_id = request.query_params.get("lastEventId") or request.headers.get("Last-Event-ID")\nstart_index = int(last_id) + 1 if last_id else 0`
               },
-              points: [
-                '阅读到一半时点击「中断」',
-                '观察断点提示：显示「第 X 段 → 将从第 X+1 段继续」',
-                '点击「重试（续传）」，绿色 NEW 标签标识新段落',
-                '点击「重试（重头）」，全部段落重新出现，无 NEW 标签'
-              ]
+              points: ['阅读到一半时点击「中断」', '点击「续传」，绿色 NEW 标签标识新段落', '点击「重头」，全部重新接收']
             },
             {
-              title: 'Step 3 · WebSocket 主动推送',
-              principle: 'WebSocket 建立连接后，服务器主动每 1.2 秒推送一段内容给客户端（与 SSE 相同的 8 段文本）。与 SSE 不同，WebSocket 使用 sessionId 跟踪客户端状态，断开重连后可从断点继续。',
-              langDesc: {
-                node: 'Node.js · ws 库 · 服务器主动推送',
-                python: 'Python · FastAPI WebSocket · 后台任务推送'
-              },
+              title: 'Step 3',
+              principle: 'WebSocket 建立连接后，服务器主动每 1.2 秒推送一段内容（与 SSE 相同的 8 段文本）。每个连接有独立 sessionId，跟踪客户端状态。',
+              langDesc: { node: 'Node.js · ws 库', python: 'Python · FastAPI WebSocket' },
               code: {
-                node: `// 服务器主动推送流
-wss.on('connection', (ws, req) => {
-  const sessionId = genSessionId();
-  ws.send(JSON.stringify({ type: 'connected', sessionId }));
-  startStream(ws, sessionId, 0); // 从第0段开始推送
-});
-
-function startStream(ws, sessionId, startIndex) {
-  let idx = startIndex;
-  const interval = setInterval(() => {
-    if (idx >= SSE_CONTENT.length) { clearInterval(interval); return; }
-    ws.send(JSON.stringify({ type: 'paragraph', id: idx, text: SSE_CONTENT[idx] }));
-    idx++;
-  }, 1200);
-}`,
-                python: `@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    session_id = gen_session_id()
-    await websocket.send_json({"type": "connected", "session_id": session_id})
-    # 后台任务每 1.2s 推送一段
-    async def stream_task():
-        for idx in range(len(SSE_CONTENT)):
-            await websocket.send_json({"type": "paragraph", "id": idx, "text": SSE_CONTENT[idx]})
-            await asyncio.sleep(1.2)`
+                node: `wss.on('connection', (ws) => {\n  const sessionId = genSessionId();\n  ws.send(JSON.stringify({ type: 'connected', sessionId }));\n  startStream(ws, sessionId, 0);\n});`,
+                python: `@app.websocket("/ws")\nasync def websocket_endpoint(websocket: WebSocket):\n    session_id = gen_session_id()\n    await websocket.send_json({"type": "connected", "session_id": session_id})`
               },
-              points: [
-                '点击「开始流」，观察 WebSocket 推送区逐段出现（紫色边框）',
-                '观察 sessionId 生成，每个连接独立',
-                '服务器主动推送，无需客户端发送任何消息',
-                '与 Step 1 的 SSE 对比：行为完全一致，但协议不同'
-              ]
+              points: ['观察 WebSocket 推送区逐段出现（紫色边框）', '每个连接有独立 sessionId', '服务器主动推送，无需客户端发消息']
             },
             {
-              title: 'Step 4 · WebSocket 续传',
-              principle: 'WebSocket 断开后，客户端重连时带上 sessionId 和 lastId，服务器从断点继续推送。与 SSE 续传的核心区别：WebSocket 的 session 状态由服务器维护，SSE 的续传由浏览器自动处理。',
-              langDesc: {
-                node: 'Node.js · session 池 + 续传判断',
-                python: 'Python · session 字典 + last_paragraph_id'
-              },
+              title: 'Step 4',
+              principle: 'WebSocket 断开后，客户端重连时带 sessionId + lastId，服务器从断点继续推送。session 状态由服务器维护（生产环境用 Redis）。',
+              langDesc: { node: 'Node.js · session 池', python: 'Python · session 字典' },
               code: {
-                node: `// 续传：客户端带 ?sessionId=xxx&lastId=X 重连
-wss.on('connection', (ws, req) => {
-  const sessionIdParam = url.searchParams.get('sessionId');
-  const lastIdParam = url.searchParams.get('lastId');
-  if (sessionIdParam && lastIdParam) {
-    // 续传：从 lastId+1 继续
-    const startIndex = parseInt(lastIdParam) + 1;
-    ws.send(JSON.stringify({ type: 'resume', resumeFrom: startIndex }));
-    startStream(ws, sessionIdParam, startIndex);
-  } else {
-    // 新连接
-    startStream(ws, genSessionId(), 0);
-  }
-});`,
-                python: `@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    session_id = url.query_params.get("sessionId")
-    last_id = url.query_params.get("lastId")
-    if session_id and last_id:
-        start_index = int(last_id) + 1
-        await websocket.send_json({"type": "resume", "resume_from": start_index})
-        # 继续推送...
-    else:
-        session_id = gen_session_id()
-        # 从头推送...`
+                node: `// 续传：带 sessionId + lastId 重连\nconst sessionIdParam = url.searchParams.get('sessionId');\nconst lastIdParam = url.searchParams.get('lastId');\nif (sessionIdParam && lastIdParam) {\n  startStream(ws, sessionIdParam, parseInt(lastIdParam) + 1);\n}`,
+                python: `session_id = url.query_params.get("sessionId")\nlast_id = url.query_params.get("lastId")\nif session_id and last_id:\n    start_index = int(last_id) + 1`
+              },
+              points: ['建立连接后点击「中断」', '点击「续传」，紫色 NEW 标签，从断点继续', '点击「重头」，服务器分配新 session，全部重新推送']
+            },
+            {
+              title: 'Step 5',
+              principle: '企业级 AI 流式场景：客户端 POST 创建 session（携带 prompt），WebSocket 连接后服务器模拟 LLM 边生成 token 边推送，同时在服务端 buffer（模拟 Redis）。断开重连时，携带 lastChunkId 从断点续传，避免重复调用 LLM API，节省成本。',
+              langDesc: { node: 'Node.js · aiSessions Map + 续传判断', python: 'Python · 等效实现' },
+              code: {
+                node: `// 1. POST /api/chat → 创建 session，返回 sessionId\n// 2. WS /ws/chat?sessionId=xxx → 连接，接收流\n// 3. 续传：WS /ws/chat?sessionId=xxx&lastChunkId=N\n//    → 服务器从 session.chunks[N+1] 开始返回\n// 4. 重头：WS /ws/chat?sessionId=xxx → 新 session，重新调用 LLM`,
+                python: `# 同理，session 字典存 chunks 列表\n# last_sent_index 跟踪最后发送位置\n# 续传时从 last_sent_index + 1 继续发送`
               },
               points: [
-                '建立连接后观察推送进度（紫色边框段落）',
-                '点击「中断」强制断开，观察 sessionId 保留',
-                '点击「重试（续传）」，观察紫色 NEW 标签，从断点继续',
-                '点击「重试（重头）」，观察服务器重新分配 sessionId，全部重新推送'
+                'Step 1: 点击「发送」，POST /api/chat 创建 session',
+                'Step 2: WebSocket 连接，AI 逐 token 生成，观察「服务器 Buffer」中 buffered tokens 增加',
+                'Step 3: 点击「中断」，buffer 保留 lastSentIndex',
+                'Step 4: 点击「续传」，WebSocket 带 lastChunkId 重连，服务器从 buffer 取数据直接返回（不重新调用 LLM）',
+                'Step 5: 点击「重头」，不携带 lastChunkId，服务器重新调用 LLM（浪费！生产环境应避免）'
               ]
             }
           ]
@@ -390,6 +336,9 @@ async def websocket_endpoint(websocket: WebSocket):
           return this.lang === 'node' ? 'http://localhost:8089' : 'http://localhost:8088';
         },
         wsBaseUrl() {
+          return this.lang === 'node' ? 'ws://localhost:8089' : 'ws://localhost:8088';
+        },
+        aiWsUrl() {
           return this.lang === 'node' ? 'ws://localhost:8089' : 'ws://localhost:8088';
         },
         statusClass() {
@@ -406,19 +355,13 @@ async def websocket_endpoint(websocket: WebSocket):
       },
 
       methods: {
-        now() {
-          return new Date().toLocaleTimeString('zh-CN', { hour12: false });
-        },
-
+        now() { return new Date().toLocaleTimeString('zh-CN', { hour12: false }); },
         logClass(type) {
           if (type === 'error') return 'text-red-400';
           if (type === 'sent') return 'text-blue-300';
           return 'text-gray-300';
         },
-
-        clearLogs() {
-          this.logs = [];
-        },
+        clearLogs() { this.logs = []; },
 
         resetStream() {
           if (this.eventSource) this.eventSource.close();
@@ -430,52 +373,39 @@ async def websocket_endpoint(websocket: WebSocket):
           this.wsSessionId = null;
           this.receivedParagraphs = [];
           this.wsReceivedParagraphs = [];
-          this.wsMessages = [];
           this.wsConnected = false;
           this.status = 'idle';
           this.resumeBanner = '';
           this.wsResumeBanner = '';
         },
 
-        // =====================
-        // SSE Methods
-        // =====================
+        // ===== SSE =====
         startSSE() {
           const url = `${this.baseUrl}/sse/stream`;
           const isResuming = this.lastEventId !== null;
           const finalUrl = isResuming ? `${url}?lastEventId=${this.lastEventId}` : url;
-
           this.eventSource = new EventSource(finalUrl);
           this.streamActive = true;
           this.status = 'streaming';
           this.resumeBanner = '';
-          this.logs.push({ time: this.now(), msg: `[SSE] ${isResuming ? '续传' : '开始'} ${finalUrl}`, type: 'info' });
+          this.logs.push({ time: this.now(), msg: `[SSE] ${isResuming ? '续传' : '开始'} → ${finalUrl}`, type: 'info' });
 
           this.eventSource.onmessage = (e) => {
             if (e.lastEventId !== '') this.lastEventId = e.lastEventId;
             if (e.data === '[DONE]') {
-              this.logs.push({ time: this.now(), msg: `[SSE] 内容传输完毕`, type: 'info' });
-              this.streamActive = false;
-              this.canRetry = true;
-              this.status = 'idle';
-              this.resumeBanner = '';
-              this.eventSource.close();
+              this.streamActive = false; this.canRetry = true; this.status = 'idle';
+              this.resumeBanner = ''; this.eventSource.close();
             } else {
-              const isNew = isResuming;
-              this.receivedParagraphs.push({ id: e.lastEventId, text: e.data, isNew });
+              this.receivedParagraphs.push({ id: e.lastEventId, text: e.data, isNew: isResuming });
               if (isResuming && !this.resumeBanner) {
-                this.resumeBanner = `✅ 续传成功！服务器从第 ${Number(e.lastEventId)} 段继续推送，已跳过前 ${Number(e.lastEventId)} 段`;
+                this.resumeBanner = `✅ 续传成功！服务器从第 ${Number(e.lastEventId)} 段继续，已跳过前 ${Number(e.lastEventId)} 段`;
               }
-              this.logs.push({ time: this.now(), msg: `[SSE] 收到第 ${Number(e.lastEventId) + 1} 段${isNew ? ' [NEW-续传]' : ''} / id=${e.lastEventId}`, type: 'info' });
             }
           };
 
           this.eventSource.onerror = () => {
             if (this.streamActive) {
-              this.logs.push({ time: this.now(), msg: `[SSE] 连接断开（Last-Event-ID: ${this.lastEventId}）`, type: 'error' });
-              this.streamActive = false;
-              this.canRetry = true;
-              this.status = 'error';
+              this.streamActive = false; this.canRetry = true; this.status = 'error';
               this.eventSource.close();
             }
           };
@@ -484,119 +414,183 @@ async def websocket_endpoint(websocket: WebSocket):
         interruptSSE() {
           if (this.eventSource) {
             this.eventSource.close();
-            this.streamActive = false;
-            this.canRetry = true;
-            this.status = 'idle';
-            this.logs.push({ time: this.now(), msg: `[SSE] 手动中断，最后收到第 ${this.lastEventId !== null ? Number(this.lastEventId) + 1 : 0} 段`, type: 'error' });
+            this.streamActive = false; this.canRetry = true; this.status = 'idle';
+            this.logs.push({ time: this.now(), msg: `[SSE] 手动中断，已接收 ${this.receivedParagraphs.length} 段`, type: 'error' });
           }
         },
 
         retrySSE(fromStart) {
           if (fromStart) {
-            this.lastEventId = null;
-            this.receivedParagraphs = [];
-            this.resumeBanner = '';
-            this.logs.push({ time: this.now(), msg: `[SSE] 重试（从头开始，全部段落将重新接收）`, type: 'info' });
-          } else {
-            this.logs.push({ time: this.now(), msg: `[SSE] 重试（续传），将跳过前 ${this.lastEventId !== null ? Number(this.lastEventId) + 1 : 0} 段`, type: 'info' });
+            this.lastEventId = null; this.receivedParagraphs = []; this.resumeBanner = '';
           }
           this.startSSE();
         },
 
-        // =====================
-        // WebSocket Methods
-        // =====================
+        // ===== WS =====
         startWS() {
           if (this.ws) this.ws.close();
-
           const isResuming = this.wsSessionId !== null && this.wsLastId !== null;
-          let url;
-          if (isResuming) {
-            url = `${this.wsBaseUrl}/ws?sessionId=${this.wsSessionId}&lastId=${this.wsLastId}`;
-          } else {
-            url = `${this.wsBaseUrl}/ws`;
-          }
-
+          const url = isResuming
+            ? `${this.wsBaseUrl}/ws?sessionId=${this.wsSessionId}&lastId=${this.wsLastId}`
+            : `${this.wsBaseUrl}/ws`;
           this.ws = new WebSocket(url);
           this.streamActive = true;
           this.status = 'streaming';
           this.wsConnected = false;
           this.wsResumeBanner = '';
-          this.logs.push({ time: this.now(), msg: `[WS] ${isResuming ? '续传' : '新连接'} ${url}`, type: 'info' });
+          this.logs.push({ time: this.now(), msg: `[WS] ${isResuming ? '续传' : '新连接'} → ${url}`, type: 'info' });
 
-          this.ws.onopen = () => {
-            this.wsConnected = true;
-            this.logs.push({ time: this.now(), msg: `[WS] 连接成功`, type: 'info' });
-          };
-
+          this.ws.onopen = () => { this.wsConnected = true; };
           this.ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            this.logs.push({ time: this.now(), msg: `[WS] ← ${JSON.stringify(data)}`, type: 'info' });
-
+            this.logs.push({ time: this.now(), msg: `[WS] ← ${JSON.stringify(data).substring(0, 80)}`, type: 'info' });
             if (data.type === 'connected') {
-              this.wsSessionId = data.sessionId;
-              this.wsLastId = null;
-              this.logs.push({ time: this.now(), msg: `[WS] sessionId=${data.sessionId}，开始推送`, type: 'info' });
+              this.wsSessionId = data.sessionId; this.wsLastId = null;
             } else if (data.type === 'resume') {
-              this.wsSessionId = data.session_id;
-              this.wsLastId = data.resume_from - 1;
-              this.wsResumeBanner = `✅ 续传成功！服务器继续从第 ${data.resume_from} 段推送，已跳过前 ${data.resume_from} 段`;
-              this.logs.push({ time: this.now(), msg: `[WS] 续传恢复，从第 ${data.resume_from} 段继续`, type: 'info' });
+              this.wsSessionId = data.session_id; this.wsLastId = data.resume_from - 1;
+              this.wsResumeBanner = `✅ 续传成功！从第 ${data.resume_from} 段继续`;
             } else if (data.type === 'paragraph') {
               this.wsLastId = data.id;
               const isNew = isResuming;
               this.wsReceivedParagraphs.push({ id: data.id, text: data.text, isNew });
             } else if (data.type === 'done') {
-              this.streamActive = false;
-              this.canRetry = true;
-              this.status = 'idle';
-              this.wsResumeBanner = '';
-              this.logs.push({ time: this.now(), msg: `[WS] 全部推送完毕`, type: 'info' });
+              this.streamActive = false; this.canRetry = true; this.status = 'idle'; this.wsResumeBanner = '';
             }
           };
-
-          this.ws.onerror = () => {
-            this.logs.push({ time: this.now(), msg: `[WS] 连接错误`, type: 'error' });
-            this.status = 'error';
-          };
-
+          this.ws.onerror = () => { this.status = 'error'; };
           this.ws.onclose = () => {
             this.wsConnected = false;
-            if (this.status !== 'idle') {
-              this.streamActive = false;
-              this.canRetry = true;
-              this.status = 'idle';
-              this.logs.push({ time: this.now(), msg: `[WS] 连接关闭，最后收到第 ${this.wsLastId !== null ? Number(this.wsLastId) + 1 : 0} 段`, type: 'error' });
-            }
+            if (this.status !== 'idle') { this.streamActive = false; this.canRetry = true; this.status = 'idle'; }
           };
         },
 
         interruptWS() {
-          if (this.ws) {
-            this.ws.close();
-            this.streamActive = false;
-            this.canRetry = true;
-            this.status = 'idle';
-            this.logs.push({ time: this.now(), msg: `[WS] 手动关闭连接（sessionId=${this.wsSessionId}）`, type: 'error' });
-          }
+          if (this.ws) { this.ws.close(); this.streamActive = false; this.canRetry = true; this.status = 'idle'; }
         },
 
         retryWS(fromStart) {
-          if (fromStart) {
-            this.wsSessionId = null;
-            this.wsLastId = null;
-            this.wsReceivedParagraphs = [];
-            this.wsResumeBanner = '';
-            this.logs.push({ time: this.now(), msg: `[WS] 重试（新建连接，从头开始）`, type: 'info' });
-          } else {
-            this.logs.push({ time: this.now(), msg: `[WS] 重试（续传），sessionId=${this.wsSessionId}，从第 ${this.wsLastId !== null ? Number(this.wsLastId) + 2 : 1} 段继续`, type: 'info' });
-          }
+          if (fromStart) { this.wsSessionId = null; this.wsLastId = null; this.wsReceivedParagraphs = []; this.wsResumeBanner = ''; }
           this.startWS();
         },
 
-        // =====================
-        // Unified entry point
-        // =====================
+        // ===== AI Chat =====
+        async startAIChat() {
+          if (!this.aiPrompt.trim()) return;
+          this.logs = [];
+          this.aiReceivedText = '';
+          this.aiBufferedCount = 0;
+          this.aiLastChunkId = null;
+          this.aiCanRetry = false;
+          this.aiConnected = false;
+
+          // 1. 创建 session
+          const res = await fetch(`${this.baseUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: this.aiPrompt, model: this.aiModel })
+          });
+          const { sessionId } = await res.json();
+          this.aiSessionId = sessionId;
+          this.logs.push({ time: this.now(), msg: `[AI] POST /api/chat → sessionId=${sessionId}`, type: 'info' });
+
+          // 2. WebSocket 连接
+          this.aiWs = new WebSocket(`${this.aiWsUrl}/ws/chat?sessionId=${sessionId}`);
+          this.aiConnected = true;
+
+          this.aiWs.onopen = () => {
+            this.logs.push({ time: this.now(), msg: `[AI] WebSocket 连接成功，等待 token...`, type: 'info' });
+          };
+
+          this.aiWs.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            this.logs.push({ time: this.now(), msg: `[AI] ← ${JSON.stringify(data).substring(0, 100)}`, type: 'info' });
+
+            if (data.type === 'start') {
+              // 新连接开始
+            } else if (data.type === 'resume') {
+              this.aiReceivedText = '(续传恢复) ';
+              this.logs.push({ time: this.now(), msg: `[AI] ✅ 续传成功：${data.message}`, type: 'info' });
+            } else if (data.type === 'chunk') {
+              this.aiLastChunkId = data.id;
+              this.aiBufferedCount = data.id + 1;
+              if (data.buffered) {
+                // 续传时已缓冲的 chunk 不重复追加到显示
+              } else {
+                this.aiReceivedText += data.text;
+              }
+            } else if (data.type === 'done') {
+              this.aiConnected = false;
+              this.aiCanRetry = true;
+              this.logs.push({ time: this.now(), msg: `[AI] 生成完毕，lastChunkId=${data.id}`, type: 'info' });
+            }
+          };
+
+          this.aiWs.onerror = () => {
+            this.logs.push({ time: this.now(), msg: `[AI] 连接错误`, type: 'error' });
+          };
+
+          this.aiWs.onclose = () => {
+            if (this.aiConnected) {
+              this.aiConnected = false;
+              this.aiCanRetry = true;
+              this.logs.push({ time: this.now(), msg: `[AI] 连接关闭，lastChunkId=${this.aiLastChunkId}，可续传`, type: 'error' });
+            }
+          };
+        },
+
+        interruptAI() {
+          if (this.aiWs) {
+            this.aiWs.close();
+            this.aiConnected = false;
+            this.aiCanRetry = true;
+            this.logs.push({ time: this.now(), msg: `[AI] 手动中断，buffer 中有 ${this.aiBufferedCount} 个 token，lastChunkId=${this.aiLastChunkId}`, type: 'error' });
+          }
+        },
+
+        retryAI(fromStart) {
+          if (fromStart) {
+            this.aiSessionId = null;
+            this.aiLastChunkId = null;
+            this.aiBufferedCount = 0;
+            this.aiReceivedText = '';
+            this.aiCanRetry = false;
+            this.aiConnected = false;
+            this.logs.push({ time: this.now(), msg: `[AI] 重试（新建 session，从头开始，重新调用 LLM）⚠️ 浪费！`, type: 'error' });
+            this.startAIChat();
+          } else {
+            if (!this.aiSessionId) return;
+            this.aiReceivedText = '(续传) ';
+            this.aiCanRetry = false;
+            this.aiConnected = false;
+            const lastId = this.aiLastChunkId;
+            this.logs.push({ time: this.now(), msg: `[AI] 续传，携带 lastChunkId=${lastId}，服务器从 buffer 直接返回后续 token`, type: 'info' });
+
+            const ws = new WebSocket(`${this.aiWsUrl}/ws/chat?sessionId=${this.aiSessionId}&lastChunkId=${lastId}`);
+            this.aiWs = ws;
+
+            ws.onopen = () => { this.aiConnected = true; };
+            ws.onmessage = (e) => {
+              const data = JSON.parse(e.data);
+              if (data.type === 'resume') {
+                this.logs.push({ time: this.now(), msg: `[AI] ✅ 续传成功：${data.message}`, type: 'info' });
+              } else if (data.type === 'chunk') {
+                this.aiLastChunkId = data.id;
+                this.aiBufferedCount = data.id + 1;
+                if (!data.buffered) this.aiReceivedText += data.text;
+              } else if (data.type === 'done') {
+                this.aiConnected = false;
+                this.aiCanRetry = true;
+              }
+            };
+            ws.onclose = () => {
+              this.aiConnected = false;
+              if (this.aiLastChunkId !== null) this.aiCanRetry = true;
+            };
+            ws.onerror = () => { this.aiCanRetry = true; };
+          }
+        },
+
+        // ===== Unified =====
         startStream() {
           this.logs = [];
           if (this.currentStep >= 2) {
@@ -611,19 +605,13 @@ async def websocket_endpoint(websocket: WebSocket):
         },
 
         interruptStream() {
-          if (this.currentStep >= 2) {
-            this.interruptWS();
-          } else {
-            this.interruptSSE();
-          }
+          if (this.currentStep >= 2) this.interruptWS();
+          else this.interruptSSE();
         },
 
         retryStream(fromStart) {
-          if (this.currentStep >= 2) {
-            this.retryWS(fromStart);
-          } else {
-            this.retrySSE(fromStart);
-          }
+          if (this.currentStep >= 2) this.retryWS(fromStart);
+          else this.retrySSE(fromStart);
         }
       }
     }).mount('#app');
