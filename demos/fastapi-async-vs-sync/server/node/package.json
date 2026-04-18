@@ -1,0 +1,13 @@
+{
+  "name": "fastapi-async-vs-sync-node",
+  "version": "1.0.0",
+  "description": "FastAPI Async vs Sync Demo - Node.js Express counterpart",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

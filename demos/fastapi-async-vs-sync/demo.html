@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastAPI 高并发原理对比 Demo</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .timeline-bar {
+      height: 24px;
+      border-radius: 4px;
+      transition: width 0.1s linear;
+    }
+    .async-bar { background: linear-gradient(90deg, #10b981, #34d399); }
+    .sync-bar { background: linear-gradient(90deg, #ef4444, #f87171); }
+    .qps-display {
+      font-size: 3rem;
+      font-weight: bold;
+      font-variant-numeric: tabular-nums;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      padding: 1.5rem;
+    }
+    .pulse {
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app" class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">FastAPI 高并发原理对比 Demo</h1>
+      <p class="text-gray-600">通过可视化压测，直观感受 async vs sync 的性能差异</p>
+    </div>
+
+    <!-- 并发控制 -->
+    <div class="card mb-6 max-w-2xl mx-auto">
+      <div class="flex items-center justify-center gap-4">
+        <label class="font-semibold text-gray-700">并发数量：</label>
+        <input
+          type="number"
+          v-model="concurrency"
+          min="5"
+          max="200"
+          class="w-24 px-3 py-2 border rounded-lg text-center text-lg"
+        >
+        <span class="text-gray-500">(5-200)</span>
+      </div>
+    </div>
+
+    <!-- 两列对比 -->
+    <div class="grid md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+      <!-- Python FastAPI -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold text-purple-600">🐍 Python FastAPI</h2>
+          <span class="text-sm text-gray-500">端口 8091</span>
+        </div>
+
+        <!-- 按钮 -->
+        <div class="flex gap-3 mb-6">
+          <button
+            @click="runTest('python', 'async')"
+            :disabled="running.python.async"
+            class="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-semibold py-3 px-4 rounded-lg transition"
+          >
+            {{ running.python.async ? '⏳ 测试中...' : '▶ async-llm 并发' }}
+          </button>
+          <button
+            @click="runTest('python', 'sync')"
+            :disabled="running.python.sync"
+            class="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold py-3 px-4 rounded-lg transition"
+          >
+            {{ running.python.sync ? '⏳ 测试中...' : '▶ sync-llm 并发' }}
+          </button>
+        </div>
+
+        <!-- 结果展示 -->
+        <div class="space-y-6">
+          <!-- async 结果 -->
+          <div>
+            <div class="flex justify-between mb-2">
+              <span class="font-semibold text-purple-600">async-llm</span>
+              <span v-if="results.python.async.length" class="text-sm">
+                QPS: <span class="font-bold">{{ qps.python.async.toFixed(1) }}</span>
+                | 耗时: <span class="font-bold">{{ totalTime.python.async.toFixed(1) }}s</span>
+              </span>
+            </div>
+            <div v-if="results.python.async.length" class="h-48 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+              <div
+                v-for="(req, idx) in results.python.async"
+                :key="idx"
+                class="mb-1"
+              >
+                <div class="flex items-center gap-2 text-xs text-gray-600 mb-0.5">
+                  <span>#{{ idx + 1 }}</span>
+                  <span>{{ req.elapsed_ms }}ms</span>
+                </div>
+                <div class="bg-gray-200 rounded h-4 overflow-hidden">
+                  <div
+                    class="timeline-bar async-bar"
+                    :style="{ width: Math.min(100, (req.elapsed_ms / totalTime.python.async / 10) * 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="h-48 flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
+              点击按钮开始测试
+            </div>
+          </div>
+
+          <!-- sync 结果 -->
+          <div>
+            <div class="flex justify-between mb-2">
+              <span class="font-semibold text-red-600">sync-llm</span>
+              <span v-if="results.python.sync.length" class="text-sm">
+                QPS: <span class="font-bold">{{ qps.python.sync.toFixed(1) }}</span>
+                | 耗时: <span class="font-bold">{{ totalTime.python.sync.toFixed(1) }}s</span>
+              </span>
+            </div>
+            <div v-if="results.python.sync.length" class="h-48 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+              <div
+                v-for="(req, idx) in results.python.sync"
+                :key="idx"
+                class="mb-1"
+              >
+                <div class="flex items-center gap-2 text-xs text-gray-600 mb-0.5">
+                  <span>#{{ idx + 1 }}</span>
+                  <span>{{ req.elapsed_ms }}ms</span>
+                </div>
+                <div class="bg-gray-200 rounded h-4 overflow-hidden">
+                  <div
+                    class="timeline-bar sync-bar"
+                    :style="{ width: Math.min(100, (req.elapsed_ms / totalTime.python.sync / 10) * 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="h-48 flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
+              点击按钮开始测试
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Node.js Express -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold text-green-600">🟢 Node.js Express</h2>
+          <span class="text-sm text-gray-500">端口 8090</span>
+        </div>
+
+        <!-- 按钮 -->
+        <div class="flex gap-3 mb-6">
+          <button
+            @click="runTest('node', 'async')"
+            :disabled="running.node.async"
+            class="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold py-3 px-4 rounded-lg transition"
+          >
+            {{ running.node.async ? '⏳ 测试中...' : '▶ async-llm 并发' }}
+          </button>
+          <button
+            @click="runTest('node', 'sync')"
+            :disabled="running.node.sync"
+            class="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold py-3 px-4 rounded-lg transition"
+          >
+            {{ running.node.sync ? '⏳ 测试中...' : '▶ sync-llm 并发' }}
+          </button>
+        </div>
+
+        <!-- 结果展示 -->
+        <div class="space-y-6">
+          <!-- async 结果 -->
+          <div>
+            <div class="flex justify-between mb-2">
+              <span class="font-semibold text-green-600">async-llm</span>
+              <span v-if="results.node.async.length" class="text-sm">
+                QPS: <span class="font-bold">{{ qps.node.async.toFixed(1) }}</span>
+                | 耗时: <span class="font-bold">{{ totalTime.node.async.toFixed(1) }}s</span>
+              </span>
+            </div>
+            <div v-if="results.node.async.length" class="h-48 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+              <div
+                v-for="(req, idx) in results.node.async"
+                :key="idx"
+                class="mb-1"
+              >
+                <div class="flex items-center gap-2 text-xs text-gray-600 mb-0.5">
+                  <span>#{{ idx + 1 }}</span>
+                  <span>{{ req.elapsed_ms }}ms</span>
+                </div>
+                <div class="bg-gray-200 rounded h-4 overflow-hidden">
+                  <div
+                    class="timeline-bar async-bar"
+                    :style="{ width: Math.min(100, (req.elapsed_ms / totalTime.node.async / 10) * 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="h-48 flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
+              点击按钮开始测试
+            </div>
+          </div>
+
+          <!-- sync 结果 -->
+          <div>
+            <div class="flex justify-between mb-2">
+              <span class="font-semibold text-red-600">sync-llm</span>
+              <span v-if="results.node.sync.length" class="text-sm">
+                QPS: <span class="font-bold">{{ qps.node.sync.toFixed(1) }}</span>
+                | 耗时: <span class="font-bold">{{ totalTime.node.sync.toFixed(1) }}s</span>
+              </span>
+            </div>
+            <div v-if="results.node.sync.length" class="h-48 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+              <div
+                v-for="(req, idx) in results.node.sync"
+                :key="idx"
+                class="mb-1"
+              >
+                <div class="flex items-center gap-2 text-xs text-gray-600 mb-0.5">
+                  <span>#{{ idx + 1 }}</span>
+                  <span>{{ req.elapsed_ms }}ms</span>
+                </div>
+                <div class="bg-gray-200 rounded h-4 overflow-hidden">
+                  <div
+                    class="timeline-bar sync-bar"
+                    :style="{ width: Math.min(100, (req.elapsed_ms / totalTime.node.sync / 10) * 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="h-48 flex items-center justify-center text-gray-400 border rounded-lg bg-gray-50">
+              点击按钮开始测试
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QPS 对比仪表 -->
+    <div class="card mt-6 max-w-6xl mx-auto" v-if="hasAnyResult">
+      <h3 class="text-lg font-bold mb-4 text-center">📊 QPS 对比（越高越好）</h3>
+      <div class="grid md:grid-cols-4 gap-6">
+        <div class="text-center">
+          <div class="text-sm text-purple-600 mb-1">Python async-llm</div>
+          <div class="qps-display text-purple-600">{{ qps.python.async.toFixed(1) }}</div>
+          <div class="text-sm text-gray-500">req/s</div>
+        </div>
+        <div class="text-center">
+          <div class="text-sm text-red-600 mb-1">Python sync-llm</div>
+          <div class="qps-display text-red-600">{{ qps.python.sync.toFixed(1) }}</div>
+          <div class="text-sm text-gray-500">req/s</div>
+        </div>
+        <div class="text-center">
+          <div class="text-sm text-green-600 mb-1">Node async-llm</div>
+          <div class="qps-display text-green-600">{{ qps.node.async.toFixed(1) }}</div>
+          <div class="text-sm text-gray-500">req/s</div>
+        </div>
+        <div class="text-center">
+          <div class="text-sm text-red-600 mb-1">Node sync-llm</div>
+          <div class="qps-display text-red-600">{{ qps.node.sync.toFixed(1) }}</div>
+          <div class="text-sm text-gray-500">req/s</div>
+        </div>
+      </div>
+      <div v-if="qps.python.async > 0 && qps.python.sync > 0" class="text-center mt-4 text-xl font-bold">
+        <span class="text-purple-600">async</span> 比 <span class="text-red-600">sync</span>
+        快约 <span class="text-blue-600">{{ (qps.python.async / (qps.python.sync || 0.01)).toFixed(0) }}倍</span>
+      </div>
+    </div>
+
+    <!-- 技术原理对比 -->
+    <div class="card mt-6 max-w-6xl mx-auto">
+      <h3 class="text-lg font-bold mb-4 text-center">🔬 技术原理对比</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead>
+            <tr class="border-b">
+              <th class="py-3 px-4">维度</th>
+              <th class="py-3 px-4 text-green-600">async def / async handler</th>
+              <th class="py-3 px-4 text-red-600">def / sync handler</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b">
+              <td class="py-3 px-4 font-semibold">关键字</td>
+              <td class="py-3 px-4">Python: <code class="bg-gray-100 px-1 rounded">async def</code> + <code class="bg-gray-100 px-1 rounded">await asyncio.sleep()</code><br>Node: <code class="bg-gray-100 px-1 rounded">async</code> + <code class="bg-gray-100 px-1 rounded">await</code></td>
+              <td class="py-3 px-4">Python: <code class="bg-gray-100 px-1 rounded">def</code> + <code class="bg-gray-100 px-1 rounded">time.sleep()</code><br>Node: <code class="bg-gray-100 px-1 rounded">while loop</code></td>
+            </tr>
+            <tr class="border-b">
+              <td class="py-3 px-4 font-semibold">执行方式</td>
+              <td class="py-3 px-4">协程挂起，事件循环调度并发</td>
+              <td class="py-3 px-4">独占线程，串行阻塞执行</td>
+            </tr>
+            <tr class="border-b">
+              <td class="py-3 px-4 font-semibold">50 并发耗时</td>
+              <td class="py-3 px-4 text-green-600">~2 秒（并行）</td>
+              <td class="py-3 px-4 text-red-600">~100 秒（串行 = 50 × 2）</td>
+            </tr>
+            <tr class="border-b">
+              <td class="py-3 px-4 font-semibold">QPS</td>
+              <td class="py-3 px-4 text-green-600">~25 req/s</td>
+              <td class="py-3 px-4 text-red-600">~0.5 req/s</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4 font-semibold">事件循环</td>
+              <td class="py-3 px-4 text-green-600">✓ 让出控制权，可调度其他任务</td>
+              <td class="py-3 px-4 text-red-600">✗ 阻塞事件循环，所有请求陪葬</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 面试 3 要点 -->
+    <div class="card mt-6 max-w-6xl mx-auto bg-gradient-to-r from-blue-50 to-purple-50">
+      <h3 class="text-lg font-bold mb-4 text-center">🎯 面试 3 要点（必背）</h3>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-lg p-4 shadow">
+          <div class="text-xl font-bold text-blue-600 mb-2">1. 事件循环 + 协程调度</div>
+          <p class="text-gray-600 text-sm">async def 中的 <code class="bg-gray-100 px-1 rounded">await</code> 让出控制权给事件循环，单线程即可高并发处理大量 IO 等待。10 个并发请求同时打进来，所有 <code class="bg-gray-100 px-1 rounded">asyncio.sleep(2)</code> 并行执行，总耗时 ~2 秒。</p>
+        </div>
+        <div class="bg-white rounded-lg p-4 shadow">
+          <div class="text-xl font-bold text-blue-600 mb-2">2. sync def = 独占线程</div>
+          <p class="text-gray-600 text-sm">普通 def 函数会独占 worker 进程/线程。10 个并发请求 = 10 × 2 = 20 秒串行等待，无法复用。uvicorn/FastAPI 默认单 worker，严重退化。</p>
+        </div>
+        <div class="bg-white rounded-lg p-4 shadow">
+          <div class="text-xl font-bold text-red-600 mb-2">3. 严禁在 async 中用 blocking I/O</div>
+          <p class="text-gray-600 text-sm"><code class="bg-gray-100 px-1 rounded">time.sleep()</code>、同步文件读取会阻塞事件循环，导致所有协程陪葬。生产环境必须用 <code class="bg-gray-100 px-1 rounded">await asyncio.sleep()</code> 或 <code class="bg-gray-100 px-1 rounded">run_in_executor()</code>。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部说明 -->
+    <div class="text-center mt-8 text-gray-500 text-sm">
+      <p>💡 提示：建议先测试 async（绿色），感受"瞬间完成"的体验，再测试 sync（红色）体验串行阻塞</p>
+      <p class="mt-1">⚠️ sync-llm 测试时请耐心等待，100 并发可能需要约 3-4 分钟</p>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          concurrency: 50,
+          running: {
+            python: { async: false, sync: false },
+            node: { async: false, sync: false }
+          },
+          results: {
+            python: { async: [], sync: [] },
+            node: { async: [], sync: [] }
+          },
+          startTimes: {
+            python: { async: null, sync: null },
+            node: { async: null, sync: null }
+          },
+          endTimes: {
+            python: { async: null, sync: null },
+            node: { async: null, sync: null }
+          }
+        };
+      },
+      computed: {
+        qps() {
+          const qps = { python: { async: 0, sync: 0 }, node: { async: 0, sync: 0 } };
+          ['python', 'node'].forEach(platform => {
+            ['async', 'sync'].forEach(type => {
+              const results = this.results[platform][type];
+              if (results.length) {
+                const start = this.startTimes[platform][type];
+                const end = this.endTimes[platform][type];
+                const totalTime = (end - start) / 1000;
+                qps[platform][type] = totalTime > 0 ? results.length / totalTime : 0;
+              }
+            });
+          });
+          return qps;
+        },
+        totalTime() {
+          const totalTime = { python: { async: 0, sync: 0 }, node: { async: 0, sync: 0 } };
+          ['python', 'node'].forEach(platform => {
+            ['async', 'sync'].forEach(type => {
+              const results = this.results[platform][type];
+              if (results.length) {
+                totalTime[platform][type] = Math.max(...results.map(r => r.elapsed_ms)) / 1000;
+              }
+            });
+          });
+          return totalTime;
+        },
+        hasAnyResult() {
+          return this.results.python.async.length ||
+                 this.results.python.sync.length ||
+                 this.results.node.async.length ||
+                 this.results.node.sync.length;
+        }
+      },
+      methods: {
+        async runTest(platform, type) {
+          const port = platform === 'python' ? 8091 : 8090;
+          const endpoint = type === 'async' ? '/async-llm' : '/sync-llm';
+          const url = `http://localhost:${port}${endpoint}`;
+
+          // 重置状态
+          this.results[platform][type] = [];
+          this.startTimes[platform][type] = null;
+          this.endTimes[platform][type] = null;
+          this.running[platform][type] = true;
+
+          const overallStart = Date.now();
+          this.startTimes[platform][type] = overallStart;
+
+          // 并发发起请求
+          const promises = [];
+          for (let i = 0; i < this.concurrency; i++) {
+            promises.push(this.makeRequest(url, platform, type));
+          }
+
+          await Promise.all(promises);
+
+          this.endTimes[platform][type] = Date.now();
+          this.running[platform][type] = false;
+        },
+        async makeRequest(url, platform, type) {
+          const start = Date.now();
+          try {
+            const response = await axios.get(url, { timeout: 300000 });
+            const elapsed = Date.now() - start;
+            this.results[platform][type].push({
+              elapsed_ms: elapsed,
+              timestamp: start
+            });
+          } catch (error) {
+            const elapsed = Date.now() - start;
+            this.results[platform][type].push({
+              elapsed_ms: elapsed,
+              error: true
+            });
+          }
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
