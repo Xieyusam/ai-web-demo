@@ -166,3 +166,172 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8088)
+
+
+# =====================
+# AI Chat — SSE 方案（Step 5a）
+# POST /api/ai/sse/start → 创建 session
+# GET  /api/ai/sse/stream → SSE 流，支持 Last-Event-ID 续传
+# =====================
+
+AI_CHUNKS = [
+    "我", "来", "为", "你", "详细", "解释", "一下", "这个", "概念", "。",
+    "首", "先", "，", "流", "式", "接", "口", "是", "一", "种", "非", "常",
+    "实", "用", "的", "技", "术", "，", "它", "允", "许", "服", "务", "器",
+    "边", "处", "理", "边", "返", "回", "结", "果", "，", "而", "不", "必",
+    "等", "待", "全", "部", "完", "成", "后", "再", "一", "次", "性", "发", "送", "。",
+    "这", "就", "像", "我", "们", "在", "使", "用", "C", "hat", "G", "PT",
+    "时", "看", "到", "的", "打", "字", "效", "果", "，", "一", "个", "字",
+    "一", "个", "字", "地", "出", "现", "，", "这", "就", "是", "流", "式",
+    "响", "应", "的", "典", "型", "应", "用", "。", "对", "于", "企", "业", "级",
+    "应", "用", "，", "我", "们", "通", "常", "会", "使", "用", "R", "ed", "is",
+    "来", "存", "储", "流", "式", "会", "话", "状", "态", "，", "这", "样",
+    "即", "使", "服", "务", "器", "重", "启", "，", "客", "户", "端", "也",
+    "能", "从", "断", "点", "恢", "复", "，", "保", "证", "用", "户", "体", "验", "。"
+]
+
+ai_sessions = {}
+
+def gen_ai_session_id():
+    return 'ai-' + ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+
+@app.post("/api/ai/sse/start")
+async def ai_sse_start(request: Request):
+    body = await request.json()
+    session_id = gen_ai_session_id()
+    ai_sessions[session_id] = {
+        "prompt": body.get("prompt", "请解释什么是流式接口"),
+        "model": body.get("model", "gpt-4"),
+        "chunks": [],
+        "last_sent_index": -1,
+    }
+    return JSONResponse({"sessionId": session_id, "status": "started", "protocol": "sse"})
+
+async def ai_sse_generate(session_id: str, start_index: int = 0):
+    session = ai_sessions.get(session_id)
+    if not session:
+        return
+
+    if start_index > 0:
+        yield f"event: system\ndata: [RESUME] 续传成功，已跳过前 {start_index} 个 token，从第 {start_index + 1} 个继续\n\n"
+    else:
+        yield f"event: system\ndata: [START] 开始生成，共 {len(AI_CHUNKS)} 个 token\n\n"
+
+    for idx in range(start_index, len(AI_CHUNKS)):
+        delay = 0.06 + random.random() * 0.14
+        await asyncio.sleep(delay)
+        yield f"id: {idx}\nevent: chunk\ndata: {AI_CHUNKS[idx]}\n\n"
+        session["chunks"].append(AI_CHUNKS[idx])
+        session["last_sent_index"] = idx
+
+    yield f"id: {len(AI_CHUNKS) - 1}\nevent: done\ndata: [DONE]\n\n"
+
+@app.get("/api/ai/sse/stream")
+async def ai_sse_stream(request: Request):
+    session_id = request.query_params.get("sessionId", "")
+    session = ai_sessions.get(session_id)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+    last_event_id = request.query_params.get("lastEventId") or request.headers.get("Last-Event-ID", "")
+    start_index = 0
+    if last_event_id:
+        try:
+            start_index = int(last_event_id) + 1
+        except ValueError:
+            start_index = 0
+
+    return StreamingResponse(
+        ai_sse_generate(session_id, start_index),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
+
+
+# =====================
+# AI Chat — WebSocket 方案（Step 5b）
+# =====================
+@app.post("/api/ai/ws/start")
+async def ai_ws_start(request: Request):
+    body = await request.json()
+    session_id = gen_ai_session_id()
+    ai_sessions[session_id] = {
+        "prompt": body.get("prompt", "请解释什么是流式接口"),
+        "model": body.get("model", "gpt-4"),
+        "chunks": [],
+        "last_sent_index": -1,
+    }
+    return JSONResponse({"sessionId": session_id, "status": "started", "protocol": "ws"})
+
+@app.websocket("/ws/chat")
+async def ai_websocket(websocket: WebSocket):
+    await websocket.accept()
+    url = websocket.url
+    session_id = url.query_params.get("sessionId")
+    last_chunk_id = url.query_params.get("lastChunkId")
+    session = ai_sessions.get(session_id)
+
+    if not session:
+        await websocket.send_json({"type": "error", "message": "Session not found"})
+        await websocket.close()
+        return
+
+    start_index = 0
+    if last_chunk_id is not None and last_chunk_id != "":
+        start_index = int(last_chunk_id) + 1
+        await websocket.send_json({
+            "type": "resume", "sessionId": session_id, "resumeFrom": start_index,
+            "message": f"续传成功！已跳过前 {start_index} 个 token"
+        })
+    else:
+        await websocket.send_json({
+            "type": "start", "sessionId": session_id, "model": session["model"],
+            "prompt": session["prompt"], "totalTokens": len(AI_CHUNKS)
+        })
+
+    # replay buffered tokens
+    for i in range(start_index, session["last_sent_index"] + 1):
+        if session["chunks"][i]:
+            await websocket.send_json({
+                "type": "chunk", "id": i, "text": session["chunks"][i],
+                "sessionId": session_id, "buffered": True
+            })
+
+    idx = session["last_sent_index"] + 1
+
+    async def stream_task():
+        nonlocal idx
+        while idx < len(AI_CHUNKS):
+            delay = 0.06 + random.random() * 0.14
+            await asyncio.sleep(delay)
+            try:
+                await websocket.send_json({
+                    "type": "chunk", "id": idx, "text": AI_CHUNKS[idx],
+                    "sessionId": session_id, "buffered": False
+                })
+                session["chunks"].append(AI_CHUNKS[idx])
+                session["last_sent_index"] = idx
+                idx += 1
+            except Exception:
+                session["last_sent_index"] = idx - 1
+                break
+        else:
+            try:
+                await websocket.send_json({"type": "done", "id": len(AI_CHUNKS) - 1, "sessionId": session_id})
+            except Exception:
+                pass
+            if session_id in ai_sessions:
+                del ai_sessions[session_id]
+
+    task = asyncio.create_task(stream_task())
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+            if msg.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+    except Exception:
+        task.cancel()
+        session["last_sent_index"] = idx - 1
+        print(f"AI WS session {session_id} paused at token {idx - 1}")

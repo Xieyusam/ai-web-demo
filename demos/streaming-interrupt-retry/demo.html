@@ -127,8 +127,8 @@
           </select>
           <!-- 协议切换 -->
           <div class="flex gap-1 items-center">
-            <span class="text-gray-500 text-xs mr-1">协议:</span>
-            <button @click="aiProtocol = 'sse'" :class="aiProtocol === 'sse' ? 'bg-cyan-600' : 'bg-gray-700'" :disabled="aiConnected" class="px-3 py-2 rounded text-sm transition-colors disabled:opacity-50">SSE</button>
+            <span class="text-gray-500 text-xs mr-1">传输:</span>
+            <button @click="aiProtocol = 'sse'" :class="aiProtocol === 'sse' ? 'bg-cyan-600' : 'bg-gray-700'" :disabled="aiConnected" class="px-3 py-2 rounded text-sm transition-colors disabled:opacity-50">SSE (fetch)</button>
             <button @click="aiProtocol = 'ws'" :class="aiProtocol === 'ws' ? 'bg-cyan-600' : 'bg-gray-700'" :disabled="aiConnected" class="px-3 py-2 rounded text-sm transition-colors disabled:opacity-50">WS</button>
           </div>
           <button
@@ -283,7 +283,8 @@
           aiReceivedText: '',
           aiBufferedCount: 0,
           aiWs: null,
-          aiEs: null,  // EventSource for SSE
+          aiEs: null,  // legacy EventSource (unused)
+          aiAbortController: null, // AbortController for fetch-based SSE
           steps: [
             {
               title: 'Step 1',
@@ -327,18 +328,18 @@
             },
             {
               title: 'Step 5',
-              principle: '企业级 AI 流式场景（支持 SSE / WS 双协议）。客户端 POST 创建 session（携带 prompt），服务器模拟 LLM 边生成 token 边推送，同时在服务端 buffer（模拟 Redis）。SSE 方案续传由浏览器 EventSource 自动处理（带 Last-Event-ID）；WS 方案需在 URL 带 lastChunkId 参数续传。',
-              langDesc: { node: 'Node.js · aiSessions Map + SSE/WS 双协议', python: 'Python · 等效实现' },
+              principle: '企业级 AI 流式场景（fetch + ReadableStream / WS 双协议）。fetch + ReadableStream 替代 EventSource，精确控制中断和手动带 Last-Event-ID 续传；WS 在 URL 带 lastChunkId 参数续传。两者服务端共用同一 aiSessions 存储（模拟 Redis）。',
+              langDesc: { node: 'Node.js · aiSessions Map + SSE(fetch)/WS', python: 'Python · 等效实现' },
               code: {
-                node: `// SSE 方案（推荐）：EventSource 自动续传\n// POST /api/ai/sse/start → sessionId\n// GET  /api/ai/sse/stream?sessionId=xxx\n// → 续传时 EventSource 自动带 Last-Event-ID 重连\n\n// WS 方案：URL 参数手动续传\n// POST /api/ai/ws/start → sessionId\n// WS /ws/chat?sessionId=xxx&lastChunkId=N\n// → 服务器从 session.chunks[N+1] 开始返回`,
-                python: `# 同理，FastAPI 可实现完全相同的 SSE + WS 双协议`
+                node: `// SSE（fetch）：AbortController 中断，Header 带 Last-Event-ID\nconst res = await fetch(url, {\n  signal: abortController.signal,\n  headers: { 'Last-Event-ID': lastEventId }\n});\nconst reader = res.body.getReader();\n\n// WS：URL 带 lastChunkId 续传\nWS /ws/chat?sessionId=xxx&lastChunkId=N`,
+                python: `# 同理，FastAPI StreamingResponse + WebSocket`
               },
               points: [
-                'Step 1: 选择协议（SSE / WS），点击「发送」',
-                'Step 2: POST 创建 session，EventSource / WebSocket 连接接收 token',
-                'Step 3: 观察「服务器 Buffer」中 buffered tokens 增加，实时可视化',
-                'Step 4: 点击「中断」，buffer 保留，lastEventId / lastChunkId 停在断点',
-                'Step 5: 点击「续传」— SSE: EventSource 自动带 Last-Event-ID 重连（浏览器行为）; WS: URL 带 lastChunkId 重连（应用层）',
+                'Step 1: 选择传输协议（SSE fetch / WS），点击「发送」',
+                'Step 2: POST 创建 session，fetch + ReadableStream / WebSocket 连接接收 token',
+                'Step 3: 观察「服务器 Buffer」中 buffered tokens 增加',
+                'Step 4: 点击「中断」— SSE: AbortController.abort()；WS: ws.close()',
+                'Step 5: 点击「续传」— SSE: fetch 手动带 Last-Event-ID header；WS: URL 带 lastChunkId',
                 'Step 6: 点击「重头」，服务器重新调用 LLM（生产环境应避免！）'
               ]
             }
@@ -519,37 +520,62 @@
         },
 
         _startAISSE(sessionId) {
+          // 用 AbortController 控制中断
+          this.aiAbortController = new AbortController();
           const url = `${this.baseUrl}/api/ai/sse/stream?sessionId=${sessionId}`;
-          this.aiEs = new EventSource(url);
           this.aiConnected = true;
-          this.logs.push({ time: this.now(), msg: `[AI] EventSource 连接 SSE，等待 token...`, type: 'info' });
+          this.logs.push({ time: this.now(), msg: `[AI] fetch + ReadableStream 连接 SSE，等待 token...`, type: 'info' });
 
-          this.aiEs.addEventListener('system', (e) => {
-            this.logs.push({ time: this.now(), msg: `[AI SSE] ${e.data}`, type: 'info' });
-          });
+          (async () => {
+            try {
+              const res = await fetch(url, { signal: this.aiAbortController.signal });
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+              let resumed = false;
 
-          this.aiEs.addEventListener('chunk', (e) => {
-            this.aiLastEventId = e.lastEventId;
-            this.aiBufferedCount = Number(e.lastEventId) + 1;
-            this.aiReceivedText += e.data;
-            this.logs.push({ time: this.now(), msg: `[AI SSE] token ${e.lastEventId}: ${e.data}`, type: 'info' });
-          });
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // 保留不完整行
 
-          this.aiEs.addEventListener('done', (e) => {
-            this.aiConnected = false;
-            this.aiCanRetry = true;
-            this.logs.push({ time: this.now(), msg: `[AI SSE] 生成完毕，lastEventId=${this.aiLastEventId}`, type: 'info' });
-            this.aiEs.close();
-          });
-
-          this.aiEs.onerror = () => {
-            if (this.aiConnected) {
-              this.aiConnected = false;
-              this.aiCanRetry = true;
-              this.logs.push({ time: this.now(), msg: `[AI SSE] 连接断开，lastEventId=${this.aiLastEventId}，可续传`, type: 'error' });
-              this.aiEs.close();
+                for (const line of lines) {
+                  if (line.startsWith('event:')) {
+                    this._currentAISSECurrentEvent = line.slice(7).trim();
+                  } else if (line.startsWith('data:')) {
+                    const data = line.slice(5).trim();
+                    if (this._currentAISSECurrentEvent === 'system') {
+                      if (data.startsWith('[RESUME]')) resumed = true;
+                      this.logs.push({ time: this.now(), msg: `[AI SSE] ${data}`, type: 'info' });
+                    } else if (this._currentAISSECurrentEvent === 'chunk') {
+                      // 提取 id
+                      const idMatch = buffer.match ? null : null;
+                      this.aiReceivedText += data;
+                    } else if (this._currentAISSECurrentEvent === 'done') {
+                      this.aiConnected = false;
+                      this.aiCanRetry = true;
+                      this.logs.push({ time: this.now(), msg: `[AI SSE] 生成完毕`, type: 'info' });
+                    }
+                  } else if (line.startsWith('id:')) {
+                    const id = line.slice(3).trim();
+                    this.aiLastEventId = id;
+                    this.aiBufferedCount = Number(id) + 1;
+                    this.logs.push({ time: this.now(), msg: `[AI SSE] token ${id}: ${this.aiReceivedText.slice(-10)}`, type: 'info' });
+                  }
+                }
+              }
+            } catch (err) {
+              if (err.name !== 'AbortError') {
+                this.logs.push({ time: this.now(), msg: `[AI SSE] 错误: ${err.message}`, type: 'error' });
+              }
+              if (this.aiConnected) {
+                this.aiConnected = false;
+                this.aiCanRetry = true;
+              }
             }
-          };
+          })();
         },
 
         _startAIWS(sessionId) {
@@ -581,7 +607,7 @@
 
         interruptAI() {
           if (this.aiProtocol === 'sse') {
-            if (this.aiEs) { this.aiEs.close(); this.aiEs = null; }
+            if (this.aiAbortController) { this.aiAbortController.abort(); }
             this.logs.push({ time: this.now(), msg: `[AI SSE] 手动中断，lastEventId=${this.aiLastEventId}，buffer ${this.aiBufferedCount} tokens`, type: 'error' });
           } else {
             if (this.aiWs) { this.aiWs.close(); this.aiWs = null; }
@@ -610,27 +636,52 @@
           this.aiCanRetry = false;
           this.aiConnected = false;
           if (this.aiProtocol === 'sse') {
-            if (this.aiEs) { this.aiEs.close(); this.aiEs = null; }
+            if (this.aiAbortController) { this.aiAbortController.abort(); }
+            this.aiAbortController = new AbortController();
             const lastId = this.aiLastEventId;
-            const url = `${this.baseUrl}/api/ai/sse/stream?sessionId=${this.aiSessionId}&lastEventId=${lastId}`;
-            this.logs.push({ time: this.now(), msg: `[AI SSE] 续传，EventSource 带 Last-Event-ID=${lastId} 重连`, type: 'info' });
-            this.aiEs = new EventSource(url);
-            this.aiConnected = true;
-            this.aiEs.addEventListener('system', (e) => {
-              this.aiReceivedText = '(续传) ';
-              this.logs.push({ time: this.now(), msg: `[AI SSE] ${e.data}`, type: 'info' });
-            });
-            this.aiEs.addEventListener('chunk', (e) => {
-              this.aiLastEventId = e.lastEventId;
-              this.aiBufferedCount = Number(e.lastEventId) + 1;
-              this.aiReceivedText += e.data;
-            });
-            this.aiEs.addEventListener('done', () => {
-              this.aiConnected = false; this.aiCanRetry = true; this.aiEs.close();
-            });
-            this.aiEs.onerror = () => {
-              this.aiConnected = false; this.aiCanRetry = true; this.aiEs.close();
-            };
+            const url = `${this.baseUrl}/api/ai/sse/stream?sessionId=${this.aiSessionId}`;
+            this.logs.push({ time: this.now(), msg: `[AI SSE] 续传，fetch 带 Last-Event-ID=${lastId} header 重连`, type: 'info' });
+            (async () => {
+              try {
+                const res = await fetch(url, {
+                  signal: this.aiAbortController.signal,
+                  headers: { 'Last-Event-ID': lastId }
+                });
+                this.aiConnected = true;
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let currentEvent = '';
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop();
+                  for (const line of lines) {
+                    if (line.startsWith('event:')) { currentEvent = line.slice(7).trim(); }
+                    else if (line.startsWith('data:')) {
+                      const data = line.slice(5).trim();
+                      if (currentEvent === 'system') {
+                        this.aiReceivedText = data.includes('[RESUME]') ? '(续传) ' : '';
+                        this.logs.push({ time: this.now(), msg: `[AI SSE] ${data}`, type: 'info' });
+                      } else if (currentEvent === 'chunk') {
+                        this.aiReceivedText += data;
+                      }
+                    } else if (line.startsWith('id:')) {
+                      this.aiLastEventId = line.slice(3).trim();
+                      this.aiBufferedCount = Number(this.aiLastEventId) + 1;
+                    }
+                  }
+                }
+                this.aiConnected = false; this.aiCanRetry = true;
+              } catch (err) {
+                if (err.name !== 'AbortError') {
+                  this.logs.push({ time: this.now(), msg: `[AI SSE] 错误: ${err.message}`, type: 'error' });
+                }
+                this.aiConnected = false; this.aiCanRetry = true;
+              }
+            })();
           } else {
             if (this.aiWs) { this.aiWs.close(); this.aiWs = null; }
             const lastId = this.aiLastChunkId;
