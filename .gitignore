@@ -2,10 +2,9 @@
 .worktrees/
 .worktrees
 
-#.playwright-cli
-.playwright-cli
-.playwright
-
+# Playwright
+.playwright-cli/
+.playwright/
 
 # Python
 __pycache__/
