@@ -1,674 +1,362 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MCP 统一教学演示 - Client-Server 架构</title>
-
-    <!-- Vue3 CDN -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Dark theme for Tailwind -->
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#3b82f6',
-                        secondary: '#8b5cf6',
-                    }
-                }
-            }
-        }
-    </script>
-
-    <style>
-        /* JSON Syntax Highlighting */
-        .json-key { color: #7dd3fc; }
-        .json-string { color: #86efac; }
-        .json-number { color: #fcd34d; }
-        .json-boolean { color: #f472b6; }
-        .json-null { color: #94a3b8; }
-        .json-bracket { color: #e2e8f0; }
-
-        /* Server panel styles */
-        .server-panel {
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            border: 1px solid #334155;
-        }
-
-        .server-panel-python {
-            border-left: 4px solid #3b82f6;
-        }
-
-        .server-panel-node {
-            border-left: 4px solid #10b981;
-        }
-
-        /* Button styles */
-        .btn-secondary {
-            @apply px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors duration-200 font-medium;
-        }
-
-        .btn-python {
-            @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium;
-        }
-
-        .btn-node {
-            @apply px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors duration-200 font-medium;
-        }
-
-        /* Response area */
-        .response-area {
-            background: #0d1117;
-            border: 1px solid #30363d;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-        }
-
-        /* Status indicators */
-        .status-connected { @apply text-emerald-400; }
-        .status-disconnected { @apply text-slate-400; }
-        .status-error { @apply text-red-400; }
-        .status-loading { @apply text-yellow-400; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP 协议教学 Demo - AI Agent 演示</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+    .chat-container { height: 350px; overflow-y: auto; }
+    .message { max-width: 80%; word-wrap: break-word; }
+    .message.ai { align-self: flex-start; }
+    .message.user { align-self: flex-end; }
+    .tool-result { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 0.75rem; font-family: 'Monaco', monospace; font-size: 0.8rem; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .status-dot.green { background: #22c55e; }
+    .status-dot.red { background: #ef4444; }
+  </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen">
-    <div id="app">
-        <!-- Header -->
-        <header class="bg-slate-800 border-b border-slate-700 px-6 py-4">
-            <h1 class="text-2xl font-bold text-white">MCP 统一教学演示</h1>
-            <p class="text-slate-400 text-sm mt-1">Model Context Protocol - Client-Server 架构对比</p>
-        </header>
-
-        <main class="container mx-auto px-6 py-8 max-w-7xl">
-
-            <!-- Architecture Overview -->
-            <section class="mb-10">
-                <h2 class="text-xl font-semibold text-white mb-4 flex items-center">
-                    <span class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3 text-sm">1</span>
-                    MCP 架构概述
-                </h2>
-                <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
-                    <div class="grid md:grid-cols-2 gap-6">
-                        <!-- Python Server Card -->
-                        <div class="bg-slate-900 rounded-lg p-5 border border-slate-700">
-                            <div class="flex items-center mb-3">
-                                <div class="w-3 h-3 bg-blue-500 rounded-full mr-2"></div>
-                                <span class="font-semibold text-blue-400">Python Server</span>
-                                <span class="ml-2 text-slate-500 text-sm">Port 8100</span>
-                            </div>
-                            <ul class="text-sm text-slate-300 space-y-1">
-                                <li>• FastAPI 框架</li>
-                                <li>• SSE (Server-Sent Events)</li>
-                                <li>• JSON-RPC 2.0 协议</li>
-                                <li>• Uvicorn ASGI 服务器</li>
-                            </ul>
-                        </div>
-
-                        <!-- Node.js Server Card -->
-                        <div class="bg-slate-900 rounded-lg p-5 border border-slate-700">
-                            <div class="flex items-center mb-3">
-                                <div class="w-3 h-3 bg-emerald-500 rounded-full mr-2"></div>
-                                <span class="font-semibold text-emerald-400">Node.js Server</span>
-                                <span class="ml-2 text-slate-500 text-sm">Port 8101</span>
-                            </div>
-                            <ul class="text-sm text-slate-300 space-y-1">
-                                <li>• Express.js 框架</li>
-                                <li>• SSE (Server-Sent Events)</li>
-                                <li>• JSON-RPC 2.0 协议</li>
-                                <li>• Native HTTP 服务器</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Transport Layer Explanation -->
-            <section class="mb-10">
-                <h2 class="text-xl font-semibold text-white mb-4 flex items-center">
-                    <span class="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center mr-3 text-sm">2</span>
-                    传输层对比: stdio vs SSE
-                </h2>
-                <div class="grid md:grid-cols-2 gap-6">
-                    <!-- stdio -->
-                    <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
-                        <h3 class="text-lg font-semibold text-slate-200 mb-3">stdio Transport</h3>
-                        <div class="bg-slate-900 rounded-lg p-4 mb-4 text-sm font-mono">
-                            <div class="text-slate-400 mb-2">// Claude Desktop 插件场景</div>
-                            <div class="text-slate-300">
-                                Claude Desktop ──stdin──► MCP Server<br>
-                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                ◄──stdout──
-                            </div>
-                        </div>
-                        <ul class="text-slate-300 text-sm space-y-2">
-                            <li><span class="text-yellow-400">适用:</span> Claude Desktop 插件、本地进程通信</li>
-                            <li><span class="text-blue-400">特点:</span> 标准输入/输出管道，单向通信</li>
-                            <li><span class="text-purple-400">优点:</span> 低延迟、无网络开销</li>
-                        </ul>
-                    </div>
-
-                    <!-- SSE -->
-                    <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
-                        <h3 class="text-lg font-semibold text-slate-200 mb-3">SSE Transport</h3>
-                        <div class="bg-slate-900 rounded-lg p-4 mb-4 text-sm font-mono">
-                            <div class="text-slate-400 mb-2">// 浏览器/Web 应用场景 (本演示)</div>
-                            <div class="text-slate-300">
-                                Browser ──POST /mcp──► MCP Server<br>
-                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                ◄──SSE /sse──
-                            </div>
-                        </div>
-                        <ul class="text-slate-300 text-sm space-y-2">
-                            <li><span class="text-yellow-400">适用:</span> 浏览器应用、远程服务、Web界面</li>
-                            <li><span class="text-blue-400">特点:</span> HTTP + SSE、双向通信</li>
-                            <li><span class="text-purple-400">优点:</span> 支持远程调用、便于调试</li>
-                        </ul>
-                    </div>
-                </div>
-            </section>
-
-            <!-- MCP vs @tool Decorator Comparison -->
-            <section class="mb-10">
-                <h2 class="text-xl font-semibold text-white mb-4 flex items-center">
-                    <span class="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center mr-3 text-sm">3</span>
-                    MCP vs @tool 装饰器对比
-                </h2>
-                <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b border-slate-600">
-                                <th class="text-left py-3 px-4 text-slate-300 font-semibold">特性</th>
-                                <th class="text-left py-3 px-4 text-blue-400 font-semibold">MCP Protocol</th>
-                                <th class="text-left py-3 px-4 text-amber-400 font-semibold">@tool Decorator</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-slate-300">
-                            <tr class="border-b border-slate-700">
-                                <td class="py-3 px-4 font-medium">工具定义</td>
-                                <td class="py-3 px-4">JSON Schema 格式</td>
-                                <td class="py-3 px-4">Python 函数包装器</td>
-                            </tr>
-                            <tr class="border-b border-slate-700">
-                                <td class="py-3 px-4 font-medium">工具发现</td>
-                                <td class="py-3 px-4">tools/list RPC 调用</td>
-                                <td class="py-3 px-4">直接函数调用</td>
-                            </tr>
-                            <tr class="border-b border-slate-700">
-                                <td class="py-3 px-4 font-medium">传输方式</td>
-                                <td class="py-3 px-4">stdio / SSE / HTTP</td>
-                                <td class="py-3 px-4">直接函数调用</td>
-                            </tr>
-                            <tr class="border-b border-slate-700">
-                                <td class="py-3 px-4 font-medium">跨语言支持</td>
-                                <td class="py-3 px-4 text-emerald-400">✓ Yes (通用协议)</td>
-                                <td class="py-3 px-4 text-red-400">✗ Python only</td>
-                            </tr>
-                            <tr class="border-b border-slate-700">
-                                <td class="py-3 px-4 font-medium">典型场景</td>
-                                <td class="py-3 px-4">AI 与工具交互</td>
-                                <td class="py-3 px-4">Python 脚本内部</td>
-                            </tr>
-                            <tr>
-                                <td class="py-3 px-4 font-medium">协议开销</td>
-                                <td class="py-3 px-4">JSON-RPC 2.0 格式</td>
-                                <td class="py-3 px-4">无 (直接调用)</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Interactive Demo Panels -->
-            <section class="mb-10">
-                <h2 class="text-xl font-semibold text-white mb-4 flex items-center">
-                    <span class="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center mr-3 text-sm">4</span>
-                    交互式演示
-                </h2>
-                <div class="grid md:grid-cols-2 gap-6">
-
-                    <!-- Python Server Panel -->
-                    <div class="server-panel server-panel-python rounded-xl p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center">
-                                <div class="w-4 h-4 bg-blue-500 rounded-full mr-3"></div>
-                                <h3 class="text-lg font-semibold text-white">Python Server</h3>
-                                <span class="ml-2 text-slate-400 text-sm">Port 8100</span>
-                            </div>
-                            <div class="flex items-center">
-                                <span class="text-xs mr-2 text-slate-400">Status:</span>
-                                <span :class="pythonStatusClass" class="text-sm font-medium">
-                                    {{ pythonStatus }}
-                                </span>
-                            </div>
-                        </div>
-
-                        <!-- Health Check -->
-                        <div class="mb-4">
-                            <button
-                                @click="checkPythonHealth"
-                                :disabled="pythonLoading"
-                                class="btn-python w-full flex items-center justify-center"
-                            >
-                                <span v-if="pythonLoading" class="animate-spin mr-2">⟳</span>
-                                <span v-else class="mr-2">○</span>
-                                {{ pythonLoading ? '检查中...' : 'Health Check' }}
-                            </button>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="grid grid-cols-2 gap-3 mb-4">
-                            <button
-                                @click="pythonListTools"
-                                :disabled="!pythonConnected || pythonLoading"
-                                class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                List Tools
-                            </button>
-                            <button
-                                @click="pythonCallWeather"
-                                :disabled="!pythonConnected || pythonLoading"
-                                class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Call Weather
-                            </button>
-                        </div>
-
-                        <!-- Response Area -->
-                        <div class="response-area rounded-lg p-4 min-h-[200px] max-h-[300px] overflow-auto">
-                            <div class="text-slate-500 text-xs mb-2">Response:</div>
-                            <pre v-html="pythonResponse" class="text-sm whitespace-pre-wrap"></pre>
-                        </div>
-
-                        <!-- Request Format Info -->
-                        <div class="mt-4 bg-slate-900/50 rounded-lg p-3">
-                            <div class="text-xs text-slate-400 mb-2">JSON-RPC Request Format:</div>
-                            <pre class="text-xs text-slate-500 overflow-x-auto">{{ pythonRequestFormat }}</pre>
-                        </div>
-                    </div>
-
-                    <!-- Node.js Server Panel -->
-                    <div class="server-panel server-panel-node rounded-xl p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center">
-                                <div class="w-4 h-4 bg-emerald-500 rounded-full mr-3"></div>
-                                <h3 class="text-lg font-semibold text-white">Node.js Server</h3>
-                                <span class="ml-2 text-slate-400 text-sm">Port 8101</span>
-                            </div>
-                            <div class="flex items-center">
-                                <span class="text-xs mr-2 text-slate-400">Status:</span>
-                                <span :class="nodeStatusClass" class="text-sm font-medium">
-                                    {{ nodeStatus }}
-                                </span>
-                            </div>
-                        </div>
-
-                        <!-- Health Check -->
-                        <div class="mb-4">
-                            <button
-                                @click="checkNodeHealth"
-                                :disabled="nodeLoading"
-                                class="btn-node w-full flex items-center justify-center"
-                            >
-                                <span v-if="nodeLoading" class="animate-spin mr-2">⟳</span>
-                                <span v-else class="mr-2">○</span>
-                                {{ nodeLoading ? '检查中...' : 'Health Check' }}
-                            </button>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="grid grid-cols-2 gap-3 mb-4">
-                            <button
-                                @click="nodeListTools"
-                                :disabled="!nodeConnected || nodeLoading"
-                                class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                List Tools
-                            </button>
-                            <button
-                                @click="nodeCallWeather"
-                                :disabled="!nodeConnected || nodeLoading"
-                                class="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Call Weather
-                            </button>
-                        </div>
-
-                        <!-- Response Area -->
-                        <div class="response-area rounded-lg p-4 min-h-[200px] max-h-[300px] overflow-auto">
-                            <div class="text-slate-500 text-xs mb-2">Response:</div>
-                            <pre v-html="nodeResponse" class="text-sm whitespace-pre-wrap"></pre>
-                        </div>
-
-                        <!-- Request Format Info -->
-                        <div class="mt-4 bg-slate-900/50 rounded-lg p-3">
-                            <div class="text-xs text-slate-400 mb-2">JSON-RPC Request Format:</div>
-                            <pre class="text-xs text-slate-500 overflow-x-auto">{{ nodeRequestFormat }}</pre>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- JSON-RPC Examples -->
-            <section class="mb-10">
-                <h2 class="text-xl font-semibold text-white mb-4 flex items-center">
-                    <span class="w-8 h-8 bg-cyan-600 rounded-lg flex items-center justify-center mr-3 text-sm">5</span>
-                    JSON-RPC 请求示例
-                </h2>
-                <div class="grid md:grid-cols-2 gap-6">
-                    <!-- tools/list -->
-                    <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
-                        <h3 class="text-md font-semibold text-cyan-400 mb-3">tools/list 请求</h3>
-                        <div class="bg-slate-900 rounded-lg p-4">
-                            <pre class="text-sm text-slate-300">{{ toolsListExample }}</pre>
-                        </div>
-                        <div class="mt-3 text-xs text-slate-500">
-                            <span class="text-cyan-400">返回:</span> 所有可用工具的列表
-                        </div>
-                    </div>
-
-                    <!-- tools/call -->
-                    <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
-                        <h3 class="text-md font-semibold text-cyan-400 mb-3">tools/call 请求</h3>
-                        <div class="bg-slate-900 rounded-lg p-4">
-                            <pre class="text-sm text-slate-300">{{ toolsCallExample }}</pre>
-                        </div>
-                        <div class="mt-3 text-xs text-slate-500">
-                            <span class="text-cyan-400">返回:</span> get_current_weather 工具的执行结果
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Footer Info -->
-            <footer class="text-center text-slate-500 text-sm pt-6 border-t border-slate-800">
-                <p>MCP 教学演示 - 用于面试准备和技术理解</p>
-                <p class="mt-1">确保 Python Server (port 8100) 和 Node.js Server (port 8101) 已启动</p>
-            </footer>
-        </main>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app" class="container mx-auto px-4 py-6 max-w-5xl">
+    <div class="text-center mb-6">
+      <h1 class="text-4xl font-bold text-purple-600 mb-2">MCP 协议教学 Demo</h1>
+      <p class="text-gray-600">AI Agent 调用 MCP Server 完整流程演示</p>
     </div>
 
-    <script>
-        const { createApp, ref, computed } = Vue;
+    <!-- 服务状态 -->
+    <div class="card mb-6">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">服务状态</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="text-center p-3 border rounded-lg">
+          <div class="font-semibold text-blue-600">Python MCP</div>
+          <div class="text-sm text-gray-500">端口 8100</div>
+          <div class="mt-1">
+            <span class="status-dot" :class="services.pythonMcp ? 'green' : 'red'"></span>
+          </div>
+        </div>
+        <div class="text-center p-3 border rounded-lg">
+          <div class="font-semibold text-green-600">Node.js MCP</div>
+          <div class="text-sm text-gray-500">端口 8101</div>
+          <div class="mt-1">
+            <span class="status-dot" :class="services.nodeMcp ? 'green' : 'red'"></span>
+          </div>
+        </div>
+        <div class="text-center p-3 border rounded-lg">
+          <div class="font-semibold text-blue-600">Python Agent</div>
+          <div class="text-sm text-gray-500">端口 8200</div>
+          <div class="mt-1">
+            <span class="status-dot" :class="services.pythonAgent ? 'green' : 'red'"></span>
+          </div>
+        </div>
+        <div class="text-center p-3 border rounded-lg">
+          <div class="font-semibold text-green-600">Node.js Agent</div>
+          <div class="text-sm text-gray-500">端口 8201</div>
+          <div class="mt-1">
+            <span class="status-dot" :class="services.nodeAgent ? 'green' : 'red'"></span>
+          </div>
+        </div>
+      </div>
+      <button @click="checkAllServices" class="mt-4 w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg transition">
+        刷新状态
+      </button>
+    </div>
 
-        createApp({
-            setup() {
-                // Reactive state
-                const pythonConnected = ref(false);
-                const pythonLoading = ref(false);
-                const pythonStatus = ref('Disconnected');
-                const pythonResponse = ref('// No response yet\n// Click "Health Check" to connect');
+    <!-- 服务选择标签 -->
+    <div class="flex border-b mb-4">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        @click="activeTab = tab.id"
+        class="px-6 py-3 font-semibold transition"
+        :class="activeTab === tab.id ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+      >
+        {{ tab.name }}
+      </button>
+    </div>
 
-                const nodeConnected = ref(false);
-                const nodeLoading = ref(false);
-                const nodeStatus = ref('Disconnected');
-                const nodeResponse = ref('// No response yet\n// Click "Health Check" to connect');
+    <!-- Python Agent -->
+    <div v-if="activeTab === 'python'" class="card">
+      <h2 class="text-xl font-bold text-blue-600 mb-4">Python AI Agent</h2>
 
-                // Request format examples
-                const pythonRequestFormat = ref(`// tools/list
-{ "jsonrpc": "2.0", "method": "tools/list", "id": 1 }
+      <div class="chat-container border rounded-lg p-4 mb-4 bg-gray-50">
+        <div v-if="pythonMessages.length === 0" class="text-gray-400 text-center py-8">
+          开始对话吧！试试说："计算身高170体重65的BMI"
+        </div>
 
-// tools/call
-{ "jsonrpc": "2.0", "method": "tools/call",
-  "params": { "name": "get_current_weather",
-              "arguments": { "city": "北京" } }, "id": 2 }`);
+        <div v-for="(msg, idx) in pythonMessages" :key="idx" class="flex mb-4" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+          <div class="message p-3 rounded-lg" :class="msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-white border'">
+            <div class="text-sm font-bold mb-1">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
+            <div>{{ msg.content }}</div>
+            <div v-if="msg.tool_result" class="tool-result mt-2">
+              <div class="text-yellow-400 text-xs mb-1">工具调用: {{ msg.tool_name }}</div>
+              <pre class="whitespace-pre-wrap">{{ formatJson(msg.tool_result) }}</pre>
+            </div>
+          </div>
+        </div>
 
-                const nodeRequestFormat = ref(`// tools/list
-{ "jsonrpc": "2.0", "method": "tools/list", "id": 1 }
+        <div v-if="pythonLoading" class="text-center text-gray-400 py-4">
+          AI 思考中...
+        </div>
+      </div>
 
-// tools/call
-{ "jsonrpc": "2.0", "method": "tools/call",
-  "params": { "name": "get_current_weather",
-              "arguments": { "city": "北京" } }, "id": 2 }`);
+      <div class="flex gap-2">
+        <select v-model="pythonProvider" class="border rounded-lg px-3 py-2 w-32">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="minimax">MiniMax</option>
+        </select>
+        <input v-model="pythonInput" @keyup.enter="sendPythonMessage" type="text" placeholder="输入消息..." class="flex-1 border rounded-lg px-4 py-2" :disabled="pythonLoading">
+        <button @click="sendPythonMessage" :disabled="pythonLoading || !pythonInput.trim()" class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-2 px-6 rounded-lg transition">发送</button>
+      </div>
 
-                // JSON-RPC examples
-                const toolsListExample = ref(`// tools/list - 列出所有可用工具
-{
-  "jsonrpc": "2.0",
-  "method": "tools/list",
-  "params": {},
-  "id": 1
-}`);
+      <button @click="resetPythonChat" class="mt-2 text-sm text-gray-500 hover:text-gray-700">重置对话</button>
+    </div>
 
-                const toolsCallExample = ref(`// tools/call - 调用天气工具
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "get_current_weather",
-    "arguments": {
-      "city": "北京"
-    }
-  },
-  "id": 2
-}`);
+    <!-- Node.js Agent -->
+    <div v-if="activeTab === 'node'" class="card">
+      <h2 class="text-xl font-bold text-green-600 mb-4">Node.js AI Agent</h2>
 
-                // Status classes
-                const pythonStatusClass = computed(() => ({
-                    'status-connected': pythonConnected.value,
-                    'status-disconnected': !pythonConnected.value && !pythonLoading.value,
-                    'status-error': pythonStatus.value.includes('Error'),
-                    'status-loading': pythonLoading.value
-                }));
+      <div class="chat-container border rounded-lg p-4 mb-4 bg-gray-50">
+        <div v-if="nodeMessages.length === 0" class="text-gray-400 text-center py-8">
+          开始对话吧！试试说："计算身高170体重65的BMI"
+        </div>
 
-                const nodeStatusClass = computed(() => ({
-                    'status-connected': nodeConnected.value,
-                    'status-disconnected': !nodeConnected.value && !nodeLoading.value,
-                    'status-error': nodeStatus.value.includes('Error'),
-                    'status-loading': nodeLoading.value
-                }));
+        <div v-for="(msg, idx) in nodeMessages" :key="idx" class="flex mb-4" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+          <div class="message p-3 rounded-lg" :class="msg.role === 'user' ? 'bg-green-500 text-white' : 'bg-white border'">
+            <div class="text-sm font-bold mb-1">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
+            <div>{{ msg.content }}</div>
+            <div v-if="msg.tool_result" class="tool-result mt-2">
+              <div class="text-yellow-400 text-xs mb-1">工具调用: {{ msg.tool_name }}</div>
+              <pre class="whitespace-pre-wrap">{{ formatJson(msg.tool_result) }}</pre>
+            </div>
+          </div>
+        </div>
 
-                // Helper: Syntax highlight JSON
-                function highlightJSON(json) {
-                    if (typeof json === 'string') {
-                        try {
-                            json = JSON.parse(json);
-                        } catch {
-                            return json;
-                        }
-                    }
-                    const str = JSON.stringify(json, null, 2);
-                    return str.replace(
-                        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
-                        function (match) {
-                            let cls = 'json-number';
-                            if (/^"/.test(match)) {
-                                if (/:$/.test(match)) {
-                                    cls = 'json-key';
-                                } else {
-                                    cls = 'json-string';
-                                }
-                            } else if (/true|false/.test(match)) {
-                                cls = 'json-boolean';
-                            } else if (/null/.test(match)) {
-                                cls = 'json-null';
-                            }
-                            return '<span class="' + cls + '">' + match + '</span>';
-                        }
-                    );
-                }
+        <div v-if="nodeLoading" class="text-center text-gray-400 py-4">
+          AI 思考中...
+        </div>
+      </div>
 
-                // Helper: Format error
-                function formatError(error) {
-                    if (error.message) {
-                        return `{ "error": "${error.message}" }`;
-                    }
-                    return JSON.stringify(error);
-                }
+      <div class="flex gap-2">
+        <select v-model="nodeProvider" class="border rounded-lg px-3 py-2 w-32">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="minimax">MiniMax</option>
+        </select>
+        <input v-model="nodeInput" @keyup.enter="sendNodeMessage" type="text" placeholder="输入消息..." class="flex-1 border rounded-lg px-4 py-2" :disabled="nodeLoading">
+        <button @click="sendNodeMessage" :disabled="nodeLoading || !nodeInput.trim()" class="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold py-2 px-6 rounded-lg transition">发送</button>
+      </div>
 
-                // Python Server Functions
-                async function checkPythonHealth() {
-                    pythonLoading.value = true;
-                    pythonStatus.value = 'Checking...';
-                    pythonResponse.value = '// Checking server health...\n';
+      <button @click="resetNodeChat" class="mt-2 text-sm text-gray-500 hover:text-gray-700">重置对话</button>
+    </div>
 
-                    try {
-                        const response = await fetch('http://localhost:8100/health');
-                        const data = await response.json();
-                        pythonConnected.value = true;
-                        pythonStatus.value = 'Connected';
-                        pythonResponse.value = highlightJSON(data);
-                    } catch (error) {
-                        pythonConnected.value = false;
-                        pythonStatus.value = 'Error';
-                        pythonResponse.value = formatError(error);
-                    } finally {
-                        pythonLoading.value = false;
-                    }
-                }
+    <!-- MCP 原理 -->
+    <div v-if="activeTab === '原理'" class="card">
+      <h2 class="text-xl font-bold text-purple-700 mb-4">🔑 MCP 核心原理</h2>
 
-                async function pythonListTools() {
-                    pythonLoading.value = true;
-                    pythonResponse.value = '// Fetching tools list...\n';
+      <div class="mb-6">
+        <h3 class="font-bold text-gray-800 mb-2">完整调用流程</h3>
+        <pre class="bg-gray-800 text-green-400 p-4 rounded-lg overflow-x-auto text-sm">
+┌─────────────────────────────────────────────────────────────────┐
+│                      AI Agent Service                            │
+│                                                                 │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                    AI Agent                            │   │
+│   │   1. 用户发送消息："计算身高170体重65的BMI"             │   │
+│   │   2. AI 发现可用工具 → tools/list                      │   │
+│   │   3. AI 决定调用 calculate_bmi                         │   │
+│   │   4. AI 调用工具 → tools/call                          │   │
+│   │   5. 返回结果给用户                                     │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                │                                │
+│                    ┌────────────┴────────────┐                   │
+│                    ▼                         ▼                   │
+│   ┌───────────────────────────┐  ┌───────────────────────────┐│
+│   │      MCP Client           │  │      MCP Server           ││
+│   │  调用 tools/list/call     │◄►│  提供 calculate_bmi 工具  ││
+│   │  端口: 8200/8201          │  │  端口: 8100/8101          ││
+│   └───────────────────────────┘  └───────────────────────────┘│
+│                    │                                          │
+│                    ▼                                          │
+│   ┌───────────────────────────────────────────────────────────┐│
+│   │                    LLM API                               ││
+│   │        OPENAI_API_KEY / ANTHROPIC_API_KEY               ││
+│   └───────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+        </pre>
+      </div>
 
-                    try {
-                        const response = await fetch('http://localhost:8100/mcp', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                jsonrpc: '2.0',
-                                method: 'tools/list',
-                                id: 1
-                            })
-                        });
-                        const data = await response.json();
-                        pythonResponse.value = highlightJSON(data);
-                    } catch (error) {
-                        pythonResponse.value = formatError(error);
-                    } finally {
-                        pythonLoading.value = false;
-                    }
-                }
+      <div class="grid md:grid-cols-2 gap-6 mb-6">
+        <div>
+          <h3 class="font-bold text-blue-600 mb-2">Python MCP Server</h3>
+          <pre class="bg-gray-800 text-green-400 p-3 rounded-lg text-sm overflow-x-auto">@mcp.tool()
+def calculate_bmi(height_cm: float, weight_kg: float) -> dict:
+    bmi = weight_kg / (height_cm / 100) ** 2
+    return {"bmi": round(bmi, 2), "category": "正常"}</pre>
+        </div>
+        <div>
+          <h3 class="font-bold text-green-600 mb-2">Node.js MCP Server</h3>
+          <pre class="bg-gray-800 text-green-400 p-3 rounded-lg text-sm overflow-x-auto">server.tool(
+  'calculate_bmi',
+  '计算 BMI',
+  { height_cm: z.number(), weight_kg: z.number() },
+  async ({ height_cm, weight_kg }) => {
+    const bmi = weight_kg / Math.pow(height_cm / 100, 2);
+    return { content: [{ type: 'text', text: JSON.stringify({bmi}) }] };
+  }
+);</pre>
+        </div>
+      </div>
 
-                async function pythonCallWeather() {
-                    pythonLoading.value = true;
-                    pythonResponse.value = '// Calling get_current_weather...\n';
+      <div class="mb-6">
+        <h3 class="font-bold text-gray-800 mb-2">JSON-RPC 2.0 消息格式</h3>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="bg-gray-50 p-3 rounded-lg">
+            <div class="text-sm font-bold text-gray-600 mb-1">tools/list</div>
+            <pre class="text-xs bg-gray-800 text-green-400 p-2 rounded">{"jsonrpc":"2.0","method":"tools/list","id":1}</pre>
+          </div>
+          <div class="bg-gray-50 p-3 rounded-lg">
+            <div class="text-sm font-bold text-gray-600 mb-1">tools/call</div>
+            <pre class="text-xs bg-gray-800 text-green-400 p-2 rounded">{"jsonrpc":"2.0","method":"tools/call","params":{"name":"calculate_bmi","arguments":{"height_cm":170,"weight_kg":65}},"id":2}</pre>
+          </div>
+        </div>
+      </div>
 
-                    try {
-                        const response = await fetch('http://localhost:8100/mcp', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                jsonrpc: '2.0',
-                                method: 'tools/call',
-                                params: {
-                                    name: 'get_current_weather',
-                                    arguments: { city: '北京' }
-                                },
-                                id: 2
-                            })
-                        });
-                        const data = await response.json();
-                        pythonResponse.value = highlightJSON(data);
-                    } catch (error) {
-                        pythonResponse.value = formatError(error);
-                    } finally {
-                        pythonLoading.value = false;
-                    }
-                }
+      <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <h3 class="font-bold text-yellow-800 mb-2">💡 面试要点</h3>
+        <ul class="text-sm text-yellow-700 space-y-1">
+          <li>• MCP = Model Context Protocol，AI 调用外部工具的标准化协议</li>
+          <li>• MCP Client 发现工具 → 调用工具 → 返回结果给 LLM</li>
+          <li>• 传输层支持 stdio（本地）和 SSE（远程）</li>
+          <li>• 优势：标准化、热插拔、跨框架</li>
+          <li>• vs 代码写死的 @tool：MCP 可以动态发现和添加工具</li>
+        </ul>
+      </div>
+    </div>
 
-                // Node.js Server Functions
-                async function checkNodeHealth() {
-                    nodeLoading.value = true;
-                    nodeStatus.value = 'Checking...';
-                    nodeResponse.value = '// Checking server health...\n';
+    <div class="text-center mt-8 text-gray-500 text-sm">
+      <p>4 个服务同时运行：Python MCP (8100) + Node.js MCP (8101) + Python Agent (8200) + Node.js Agent (8201)</p>
+    </div>
+  </div>
 
-                    try {
-                        const response = await fetch('http://localhost:8101/health');
-                        const data = await response.json();
-                        nodeConnected.value = true;
-                        nodeStatus.value = 'Connected';
-                        nodeResponse.value = highlightJSON(data);
-                    } catch (error) {
-                        nodeConnected.value = false;
-                        nodeStatus.value = 'Error';
-                        nodeResponse.value = formatError(error);
-                    } finally {
-                        nodeLoading.value = false;
-                    }
-                }
+  <script>
+    const { createApp } = Vue.createApp({
+      data() {
+        return {
+          activeTab: 'python',
+          tabs: [
+            { id: 'python', name: 'Python Agent' },
+            { id: 'node', name: 'Node.js Agent' },
+            { id: '原理', name: 'MCP 原理' }
+          ],
+          services: {
+            pythonMcp: false,
+            nodeMcp: false,
+            pythonAgent: false,
+            nodeAgent: false
+          },
+          pythonMessages: [],
+          pythonInput: '',
+          pythonLoading: false,
+          pythonProvider: 'openai',
+          nodeMessages: [],
+          nodeInput: '',
+          nodeLoading: false,
+          nodeProvider: 'openai'
+        };
+      },
+      methods: {
+        async checkAllServices() {
+          const endpoints = [
+            { key: 'pythonMcp', url: 'http://localhost:8100/health' },
+            { key: 'nodeMcp', url: 'http://localhost:8101/health' },
+            { key: 'pythonAgent', url: 'http://localhost:8200/health' },
+            { key: 'nodeAgent', url: 'http://localhost:8201/health' }
+          ];
 
-                async function nodeListTools() {
-                    nodeLoading.value = true;
-                    nodeResponse.value = '// Fetching tools list...\n';
-
-                    try {
-                        const response = await fetch('http://localhost:8101/mcp', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                jsonrpc: '2.0',
-                                method: 'tools/list',
-                                id: 1
-                            })
-                        });
-                        const data = await response.json();
-                        nodeResponse.value = highlightJSON(data);
-                    } catch (error) {
-                        nodeResponse.value = formatError(error);
-                    } finally {
-                        nodeLoading.value = false;
-                    }
-                }
-
-                async function nodeCallWeather() {
-                    nodeLoading.value = true;
-                    nodeResponse.value = '// Calling get_current_weather...\n';
-
-                    try {
-                        const response = await fetch('http://localhost:8101/mcp', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                jsonrpc: '2.0',
-                                method: 'tools/call',
-                                params: {
-                                    name: 'get_current_weather',
-                                    arguments: { city: '北京' }
-                                },
-                                id: 2
-                            })
-                        });
-                        const data = await response.json();
-                        nodeResponse.value = highlightJSON(data);
-                    } catch (error) {
-                        nodeResponse.value = formatError(error);
-                    } finally {
-                        nodeLoading.value = false;
-                    }
-                }
-
-                return {
-                    // Python state
-                    pythonConnected,
-                    pythonLoading,
-                    pythonStatus,
-                    pythonStatusClass,
-                    pythonResponse,
-                    pythonRequestFormat,
-                    checkPythonHealth,
-                    pythonListTools,
-                    pythonCallWeather,
-
-                    // Node state
-                    nodeConnected,
-                    nodeLoading,
-                    nodeStatus,
-                    nodeStatusClass,
-                    nodeResponse,
-                    nodeRequestFormat,
-                    checkNodeHealth,
-                    nodeListTools,
-                    nodeCallWeather,
-
-                    // Examples
-                    toolsListExample,
-                    toolsCallExample
-                };
+          for (const ep of endpoints) {
+            try {
+              const res = await fetch(ep.url);
+              this.services[ep.key] = res.ok;
+            } catch {
+              this.services[ep.key] = false;
             }
-        }).mount('#app');
-    </script>
+          }
+        },
+        async sendPythonMessage() {
+          if (!this.pythonInput.trim() || this.pythonLoading) return;
+          const message = this.pythonInput.trim();
+          this.pythonInput = '';
+          this.pythonLoading = true;
+          this.pythonMessages.push({ role: 'user', content: message });
+
+          try {
+            const res = await fetch('http://localhost:8200/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message, provider: this.pythonProvider })
+            });
+            const data = await res.json();
+            this.pythonMessages.push({
+              role: 'assistant',
+              content: data.response || '无回复',
+              tool_name: data.tool_used,
+              tool_result: data.tool_result
+            });
+          } catch (e) {
+            this.pythonMessages.push({ role: 'assistant', content: '错误: ' + e.message });
+          }
+
+          this.pythonLoading = false;
+        },
+        async resetPythonChat() {
+          await fetch('http://localhost:8200/reset', { method: 'POST' });
+          this.pythonMessages = [];
+        },
+        async sendNodeMessage() {
+          if (!this.nodeInput.trim() || this.nodeLoading) return;
+          const message = this.nodeInput.trim();
+          this.nodeInput = '';
+          this.nodeLoading = true;
+          this.nodeMessages.push({ role: 'user', content: message });
+
+          try {
+            const res = await fetch('http://localhost:8201/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message, provider: this.nodeProvider })
+            });
+            const data = await res.json();
+            this.nodeMessages.push({
+              role: 'assistant',
+              content: data.response || '无回复',
+              tool_name: data.tool_used,
+              tool_result: data.tool_result
+            });
+          } catch (e) {
+            this.nodeMessages.push({ role: 'assistant', content: '错误: ' + e.message });
+          }
+
+          this.nodeLoading = false;
+        },
+        async resetNodeChat() {
+          await fetch('http://localhost:8201/reset', { method: 'POST' });
+          this.nodeMessages = [];
+        },
+        formatJson(obj) {
+          if (typeof obj === 'string') {
+            try { obj = JSON.parse(obj); } catch (e) { return obj; }
+          }
+          return JSON.stringify(obj, null, 2);
+        }
+      },
+      mounted() {
+        this.checkAllServices();
+      }
+    }).mount('#app');
+  </script>
 </body>
 </html>

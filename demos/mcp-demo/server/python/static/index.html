@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python AI Agent - MCP 演示</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    .chat-container { height: 400px; overflow-y: auto; }
+    .message { max-width: 80%; word-wrap: break-word; }
+    .message.ai { align-self: flex-start; }
+    .message.user { align-self: flex-end; }
+    .tool-result { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 0.75rem; font-family: 'Monaco', monospace; font-size: 0.8rem; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app" class="container mx-auto px-4 py-8 max-w-3xl">
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-blue-600 mb-2">Python AI Agent</h1>
+      <p class="text-gray-600">MCP Client + LLM 演示 · 端口 8200</p>
+      <div class="mt-2 text-sm">
+        <span class="px-2 py-1 rounded" :class="connected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+          {{ connected ? '✓ LLM 已连接' : '✗ 未连接' }}
+        </span>
+        <span class="ml-2 text-gray-500">{{ provider.toUpperCase() }}</span>
+      </div>
+    </div>
+
+    <!-- 连接检查 -->
+    <div class="card mb-4">
+      <button @click="checkHealth" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition">
+        检查连接状态
+      </button>
+    </div>
+
+    <!-- 聊天区域 -->
+    <div class="card mb-4">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">对话</h2>
+
+      <div class="chat-container border rounded-lg p-4 mb-4 bg-gray-50">
+        <div v-if="messages.length === 0" class="text-gray-400 text-center py-8">
+          开始对话吧！试试说："计算身高170体重65的BMI"
+        </div>
+
+        <div v-for="(msg, idx) in messages" :key="idx" class="flex mb-4" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+          <div class="message p-3 rounded-lg" :class="msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-white border'">
+            <div class="text-sm font-bold mb-1">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
+            <div>{{ msg.content }}</div>
+
+            <!-- 工具调用结果 -->
+            <div v-if="msg.tool_result" class="tool-result mt-2">
+              <div class="text-yellow-400 text-xs mb-1">工具调用: {{ msg.tool_name }}</div>
+              <pre class="whitespace-pre-wrap">{{ formatJson(msg.tool_result) }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="loading" class="text-center text-gray-400 py-4">
+          AI 思考中...
+        </div>
+      </div>
+
+      <!-- 输入区域 -->
+      <div class="flex gap-2">
+        <select v-model="provider" class="border rounded-lg px-3 py-2 w-32">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+        <input
+          v-model="inputMessage"
+          @keyup.enter="sendMessage"
+          type="text"
+          placeholder="输入消息..."
+          class="flex-1 border rounded-lg px-4 py-2"
+          :disabled="loading"
+        >
+        <button
+          @click="sendMessage"
+          :disabled="loading || !inputMessage.trim()"
+          class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-2 px-6 rounded-lg transition"
+        >
+          发送
+        </button>
+      </div>
+
+      <button @click="resetChat" class="mt-2 text-sm text-gray-500 hover:text-gray-700">
+        重置对话
+      </button>
+    </div>
+
+    <!-- MCP 原理 -->
+    <div class="card">
+      <h2 class="text-lg font-bold text-purple-700 mb-3">🔑 MCP 原理</h2>
+      <div class="text-sm text-gray-600">
+        <pre class="bg-gray-800 text-green-400 p-3 rounded-lg overflow-x-auto">
+┌─────────────────────────────────────────────────────────────────┐
+│                      AI Agent Service                            │
+│   ┌─────────────────────┐    ┌─────────────────────────────┐   │
+│   │   AI Agent          │───►│   MCP Server (端口 8100)     │   │
+│   │   (MCP Client)      │    │   提供 calculate_bmi 工具   │   │
+│   └─────────────────────┘    └─────────────────────────────┘   │
+│           │                                                 │
+│   ┌───────┴───────┐                                        │
+│   │  LLM API     │  ◄── OPENAI_API_KEY / ANTHROPIC_API_KEY │
+│   └───────────────┘                                        │
+└─────────────────────────────────────────────────────────────────┘
+        </pre>
+        <p class="mt-3">尝试说："计算身高170体重65的BMI"，AI 会自动发现并调用工具。</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp } = Vue.createApp({
+      data() {
+        return {
+          connected: false,
+          loading: false,
+          provider: 'openai',
+          inputMessage: '',
+          messages: []
+        };
+      },
+      methods: {
+        async checkHealth() {
+          try {
+            const res = await fetch('http://localhost:8200/health');
+            const data = await res.json();
+            this.connected = data.has_openai_key || data.has_anthropic_key;
+            this.provider = data.llm_provider || 'openai';
+          } catch (e) {
+            this.connected = false;
+          }
+        },
+        async sendMessage() {
+          if (!this.inputMessage.trim() || this.loading) return;
+
+          const message = this.inputMessage.trim();
+          this.inputMessage = '';
+          this.loading = true;
+
+          // 添加用户消息
+          this.messages.push({ role: 'user', content: message });
+
+          try {
+            const res = await fetch('http://localhost:8200/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message,
+                provider: this.provider
+              })
+            });
+            const data = await res.json();
+
+            // 添加 AI 回复
+            this.messages.push({
+              role: 'assistant',
+              content: data.response || '无回复',
+              tool_name: data.tool_used,
+              tool_result: data.tool_result
+            });
+          } catch (e) {
+            this.messages.push({
+              role: 'assistant',
+              content: '错误: ' + e.message
+            });
+          }
+
+          this.loading = false;
+        },
+        async resetChat() {
+          try {
+            await fetch('http://localhost:8200/reset', { method: 'POST' });
+            this.messages = [];
+          } catch (e) {
+            console.error('Reset error:', e);
+          }
+        },
+        formatJson(obj) {
+          if (typeof obj === 'string') {
+            try { obj = JSON.parse(obj); } catch (e) { return obj; }
+          }
+          return JSON.stringify(obj, null, 2);
+        }
+      },
+      mounted() {
+        this.checkHealth();
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

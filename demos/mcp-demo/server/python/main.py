@@ -1,324 +1,212 @@
 """
-Python MCP Server with SSE Transport
+Python MCP Server with fastmcp SDK
 
-MCP Client-Server Architecture:
-┌─────────────────────────────────────────────────────────────┐
-│                        Host (Browser/AI)                    │
-│   ┌─────────────┐                                           │
-│   │ MCP Client  │ ◄──── SSE (HTTP)                         │
-│   │ (JS in page)│                                           │
-│   └─────────────┘                                           │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│   Python MCP Server (port 8100)                              │
-│   ┌─────────────────────────────────────────┐               │
-│   │ Tool: get_current_weather(city: str)    │               │
-│   │ - FastAPI 模拟 MCP 协议                  │               │
-│   │ - Returns fixed weather data            │               │
-│   └─────────────────────────────────────────┘               │
-└──────────────────────────────────────────────────────────────┘
+MCP 核心概念：
+┌─────────────────────────────────────────────────────────────────┐
+│                      AI Application (Host)                        │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                    MCP Client                             │   │
+│   │   1. 发现工具 → tools/list                               │   │
+│   │   2. 调用工具 → tools/call                               │   │
+│   └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               │ stdio (本地) / SSE (远程)
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      MCP Server (本服务)                         │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  @mcp.tool() 装饰器定义工具                             │   │
+│   │  - calculate_bmi(height_cm, weight_kg)                  │   │
+│   └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
 
-Transport Layer Choice:
-- stdio: 本地进程通信，Claude Desktop 插件用
-- SSE:  远程HTTP通信，浏览器/Web服务用 ◄── 本Demo选择
+传输层选择：
+- stdio: Claude Desktop 插件，本地进程通信
+- SSE:  Web 服务，远程 HTTP 通信 ◄── 本 Demo 选择
 
-MCP Protocol Overview (JSON-RPC 2.0):
-- tools/list: 列出服务器上所有可用工具
-- tools/call: 调用指定工具并返回结果
-- 消息格式: {"jsonrpc": "2.0", "id": int|str, "method": str, "params": object?}
+MCP 协议消息格式 (JSON-RPC 2.0):
+- tools/list: 列出所有可用工具
+- tools/call: 调用指定工具
+
+安装依赖：
+pip install -r requirements.txt
+
+启动服务：
+python main.py
+
+测试：
+curl http://localhost:8100/health
 """
 
-import asyncio
-import json
-import uuid
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
-
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
 import uvicorn
+from fastmcp import FastMCP
+import json
 
 # =============================================================================
-# MCP Server Implementation
+# 创建 MCP Server
 # =============================================================================
-
-app = FastAPI(
-    title="MCP Weather Server",
-    description="A teaching demo MCP server with SSE transport",
-    version="1.0.0"
-)
-
-# In-memory storage for connected SSE clients (for demo purposes)
-# In production, you'd use a proper message queue or pub/sub system
-connected_clients: Dict[str, asyncio.Queue] = {}
+# FastMCP 是 MCP Python SDK 的高级封装，简化了工具定义
+mcp = FastMCP("bmi-server")
 
 # =============================================================================
-# MCP Tool Definition
+# MCP 工具定义
 # =============================================================================
-
-async def get_current_weather(city: str) -> Dict[str, Any]:
+@mcp.tool()
+def calculate_bmi(height_cm: float, weight_kg: float) -> dict:
     """
-    获取当前天气信息
+    计算 BMI (Body Mass Index) 并返回健康建议
+
+    BMI 是国际上常用的衡量人体胖瘦程度以及是否健康的指标。
 
     Args:
-        city: 城市名称
+        height_cm: 身高（厘米），例如 170
+        weight_kg: 体重（公斤），例如 65
 
     Returns:
-        包含城市、天气、温度和湿度的字典
+        dict: 包含 BMI 值、分类和健康建议
+
+    BMI 分类标准（中国参考）：
+    - < 18.5: 偏瘦
+    - 18.5 ~ 24: 正常
+    - 24 ~ 28: 偏胖
+    - >= 28: 肥胖
     """
-    # 模拟天气数据（实际项目中会调用外部API）
-    weather_data = {
-        "city": city,
-        "weather": "晴天",
-        "temperature": "25°C",
-        "humidity": "50%"
-    }
-    return weather_data
+    # 计算 BMI
+    height_m = height_cm / 100
+    bmi = weight_kg / (height_m ** 2)
 
-
-# MCP Protocol: 可用工具列表
-# 每个工具定义包含: name(工具名), description(描述), inputSchema(输入参数模式)
-MCP_TOOLS = [
-    {
-        "name": "get_current_weather",
-        "description": "获取指定城市的当前天气信息，返回城市名、天气状况、温度和湿度",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "city": {
-                    "type": "string",
-                    "description": "城市名称，例如：北京、上海、东京"
-                }
-            },
-            "required": ["city"]
-        }
-    }
-]
-
-# =============================================================================
-# MCP Protocol Handlers
-# =============================================================================
-
-async def handle_tools_list(params: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    处理 tools/list 请求
-
-    MCP Protocol:
-    Request:  {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    Response: {"jsonrpc": "2.0", "id": 1, "result": {"tools": [...]}}
-    """
-    return MCP_TOOLS
-
-
-async def handle_tools_call(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    处理 tools/call 请求
-
-    MCP Protocol:
-    Request:  {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-               "params": {"name": "get_current_weather", "arguments": {"city": "北京"}}}
-    Response: {"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "..."}]}}
-    """
-    if tool_name == "get_current_weather":
-        result = await get_current_weather(**arguments)
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": json.dumps(result, ensure_ascii=False, indent=2)
-                }
-            ]
-        }
+    # 根据 BMI 值判断分类（中国标准）
+    if bmi < 18.5:
+        category = "偏瘦"
+        suggestion = "建议适当增加营养摄入，保持均衡饮食。"
+    elif bmi < 24:
+        category = "正常"
+        suggestion = "继续保持健康的饮食和运动习惯。"
+    elif bmi < 28:
+        category = "偏胖"
+        suggestion = "建议适当控制饮食，增加运动量。"
     else:
-        raise ValueError(f"Unknown tool: {tool_name}")
+        category = "肥胖"
+        suggestion = "建议咨询医生，制定科学的减重计划。"
 
-
-# =============================================================================
-# SSE Endpoint - Server-Sent Events for client notifications
-# =============================================================================
-
-@app.get("/sse")
-async def sse_endpoint(request: Request):
-    """
-    SSE endpoint for browser/Web clients
-
-    Server-Sent Events (SSE) 是一种基于HTTP的单向通信协议，
-    服务器通过这个端点向浏览器客户端推送事件。
-
-    MCP SSE 流程:
-    1. 客户端连接 /sse 端点，建立长连接
-    2. 服务器可随时通过此连接向客户端发送事件
-    3. 客户端通过 POST /mcp 发送请求
-
-    注意: 这是一个简化的教学演示。
-    真正的MCP SSE实现使用更复杂的流式响应机制。
-    """
-    client_id = str(uuid.uuid4())
-    queue: asyncio.Queue = asyncio.Queue()
-    connected_clients[client_id] = queue
-
-    async def event_generator() -> AsyncGenerator[Dict[str, Any], None]:
-        """生成SSE事件流"""
-        try:
-            # 发送连接建立事件
-            yield {
-                "event": "connected",
-                "data": json.dumps({"client_id": client_id, "status": "connected"})
-            }
-
-            # 保持连接并等待消息
-            while True:
-                try:
-                    # 等待消息，超时后发送心跳
-                    message = await asyncio.wait_for(queue.get(), timeout=30)
-                    yield {
-                        "event": "message",
-                        "data": json.dumps(message)
-                    }
-                except asyncio.TimeoutError:
-                    # 发送心跳保持连接
-                    yield {"event": "heartbeat", "data": json.dumps({"status": "alive"})}
-        except asyncio.CancelledError:
-            pass
-        finally:
-            connected_clients.pop(client_id, None)
-
-    return EventSourceResponse(event_generator())
-
-
-# =============================================================================
-# MCP Protocol Endpoint - JSON-RPC over HTTP
-# =============================================================================
-
-class MCPRequest(BaseModel):
-    """MCP JSON-RPC 2.0 请求格式"""
-    jsonrpc: str = "2.0"
-    id: Union[int, str]
-    method: str
-    params: Optional[Dict[str, Any]] = None
-
-
-@app.post("/mcp")
-async def mcp_endpoint(request: MCPRequest):
-    """
-    MCP Protocol Endpoint
-
-    处理 MCP JSON-RPC 2.0 请求:
-    - tools/list: 列出所有可用工具
-    - tools/call: 调用指定工具
-
-    请求格式:
-    {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/list",           // 或 "tools/call"
-        "params": {}                       // tools/call 时需要 name 和 arguments
+    return {
+        "bmi": round(bmi, 2),
+        "category": category,
+        "suggestion": suggestion,
+        "height_cm": height_cm,
+        "weight_kg": weight_kg
     }
 
-    响应格式:
-    {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "result": {...}                    // 成功时
-    }
-    或
-    {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "error": {...}                     // 失败时
-    }
-    """
-    try:
-        if request.method == "tools/list":
-            result = await handle_tools_list(request.params)
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": request.id,
-                "result": {"tools": result}
-            })
-
-        elif request.method == "tools/call":
-            if not request.params or "name" not in request.params:
-                raise ValueError("Missing 'name' in params")
-            tool_name = request.params["name"]
-            arguments = request.params.get("arguments", {})
-            result = await handle_tools_call(tool_name, arguments)
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": request.id,
-                "result": result
-            })
-
-        else:
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": request.id,
-                "error": {
-                    "code": -32601,
-                    "message": f"Method not found: {request.method}"
-                }
-            }, status_code=404)
-
-    except ValueError as e:
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": request.id,
-            "error": {
-                "code": -32602,
-                "message": str(e)
-            }
-        }, status_code=400)
-    except Exception as e:
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": request.id,
-            "error": {
-                "code": -32603,
-                "message": f"Internal error: {str(e)}"
-            }
-        }, status_code=500)
-
 
 # =============================================================================
-# Health Check Endpoint
+# FastAPI 应用 + MCP 端点
 # =============================================================================
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+app = FastAPI(title="MCP BMI Server")
+PORT = 8100
+
+# 挂载静态文件目录
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def root():
+    """返回演示页面"""
+    return FileResponse("static/index.html")
 
 @app.get("/health")
-async def health_check():
-    """
-    健康检查端点
-
-    用于验证服务器是否正常运行
-    """
+async def health():
+    """健康检查端点"""
     return {
         "status": "healthy",
-        "service": "MCP Weather Server",
+        "service": "MCP BMI Server (Python)",
         "version": "1.0.0",
-        "port": 8100
+        "port": PORT,
+        "mcp_server": "bmi-server"
     }
 
+@app.post("/mcp")
+async def mcp_endpoint(request: dict):
+    """MCP JSON-RPC 2.0 端点"""
+    method = request.get("method", "")
+    params = request.get("params", {})
+    id = request.get("id")
 
-# =============================================================================
-# Server Startup
-# =============================================================================
+    try:
+        if method == "tools/list":
+            # 返回工具列表
+            return {
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "tools": [
+                        {
+                            "name": "calculate_bmi",
+                            "description": "计算 BMI (Body Mass Index) 并返回健康建议",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "height_cm": {"type": "number", "description": "身高（厘米）"},
+                                    "weight_kg": {"type": "number", "description": "体重（公斤）"}
+                                },
+                                "required": ["height_cm", "weight_kg"]
+                            }
+                        }
+                    ]
+                }
+            }
+        elif method == "tools/call":
+            # 调用工具
+            name = params.get("name")
+            args = params.get("arguments", {})
+
+            if name == "calculate_bmi":
+                height_cm = args.get("height_cm")
+                weight_kg = args.get("weight_kg")
+
+                # 复用 calculate_bmi 函数
+                result = calculate_bmi(height_cm, weight_kg)
+
+                return {
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]
+                    }
+                }
+            else:
+                return {"jsonrpc": "2.0", "id": id, "error": f"Unknown tool: {name}"}
+        else:
+            return {"jsonrpc": "2.0", "id": id, "error": "Method not found"}
+    except Exception as e:
+        return {"jsonrpc": "2.0", "id": id, "error": str(e)}
+
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("MCP Weather Server with SSE Transport")
-    print("=" * 60)
-    print("Server running on http://localhost:8100")
-    print("")
-    print("Endpoints:")
-    print("  GET  /sse   - SSE endpoint for browser clients")
-    print("  POST /mcp   - MCP protocol endpoint (JSON-RPC)")
-    print("  GET  /health - Health check")
-    print("")
-    print("Available Tools:")
-    for tool in MCP_TOOLS:
-        print(f"  - {tool['name']}: {tool['description']}")
-    print("=" * 60)
+    print(f"""
+============================================================
+Python MCP BMI Server
+============================================================
+MCP Server: bmi-server
+Port: {PORT}
 
-    uvicorn.run(app, host="0.0.0.0", port=8100)
+MCP 工具:
+  - calculate_bmi(height_cm: float, weight_kg: float)
+
+使用说明:
+  1. 启动服务: python main.py
+  2. 打开页面: http://localhost:{PORT}
+  3. 健康检查: http://localhost:{PORT}/health
+
+API 端点:
+  GET  /           - 演示页面
+  GET  /health     - 健康检查
+  POST /mcp        - MCP JSON-RPC 端点 (tools/list, tools/call)
+
+============================================================
+    """)
+
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
