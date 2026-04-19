@@ -8,6 +8,7 @@
 |------|------|------|
 | [streaming-interrupt-retry](demos/streaming-interrupt-retry/) | 流式接口中断与重试（Node.js + Python，SSE + WebSocket） | ✅ 完成 |
 | [fastapi-async-vs-sync](demos/fastapi-async-vs-sync/) | FastAPI 异步 vs 同步高并发原理对比教学 Demo（Python + Node.js） | ✅ 完成 |
+| [mcp-demo](demos/mcp-demo/) | MCP 协议教学 Demo - AI Agent 调用 MCP Server 工具（Python + Node.js） | ✅ 完成 |
 
 ## 本地运行
 
