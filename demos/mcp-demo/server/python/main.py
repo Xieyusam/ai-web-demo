@@ -15,7 +15,7 @@ MCP Client-Server Architecture:
 │   Python MCP Server (port 8100)                              │
 │   ┌─────────────────────────────────────────┐               │
 │   │ Tool: get_current_weather(city: str)    │               │
-│   │ - mcp.server.tool() decorator          │               │
+│   │ - FastAPI 模拟 MCP 协议                  │               │
 │   │ - Returns fixed weather data            │               │
 │   └─────────────────────────────────────────┘               │
 └──────────────────────────────────────────────────────────────┘
