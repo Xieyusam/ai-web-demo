@@ -5,83 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MCP 统一教学演示 - Client-Server 架构</title>
 
-    <!--
-    ============================================================================
-    MCP (Model Context Protocol) Client-Server Architecture
-    ============================================================================
-
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                           Host (Browser/AI)                            │
-    │  ┌───────────────────────────────────────────────────────────────────┐  │
-    │  │                         MCP Client (JS)                            │  │
-    │  │                                                                    │  │
-    │  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐        │  │
-    │  │   │ tools/list   │    │ tools/call   │    │  results     │        │  │
-    │  │   └──────┬───────┘    └──────┬───────┘    └──────▲───────┘        │  │
-    │  │          │                   │                   │                │  │
-    │  │          └───────────────────┼───────────────────┘                │  │
-    │  │                              ▼                                      │  │
-    │  │                    JSON-RPC 2.0 Request                            │  │
-    │  └───────────────────────────────────────────────────────────────────┘  │
-    └─────────────────────────────────────────────────────────────────────────┘
-                                       │
-                                       ▼ HTTP POST /mcp
-              ┌─────────────────────────────────────────────────────────────┐
-              │                      MCP Servers                            │
-              │  ┌─────────────────────┐    ┌─────────────────────────┐    │
-              │  │  Python Server      │    │  Node.js Server         │    │
-              │  │  (FastAPI + SSE)    │    │  (Express + SSE)        │    │
-              │  │  Port: 8100         │    │  Port: 8101             │    │
-              │  └─────────────────────┘    └─────────────────────────┘    │
-              │                                                              │
-              │  Each server implements:                                     │
-              │  - GET  /health  → Server status check                       │
-              │  - GET  /sse     → SSE endpoint for server→client events    │
-              │  - POST /mcp     → JSON-RPC 2.0 endpoint                     │
-              │                  → tools/list → List available tools       │
-              │                  → tools/call → Call a specific tool       │
-              └─────────────────────────────────────────────────────────────┘
-
-    ============================================================================
-    Transport Layer: stdio vs SSE
-    ============================================================================
-
-    ┌─────────────────────────────────┬────────────────────────────────────────┐
-    │         stdio Transport         │           SSE Transport               │
-    ├─────────────────────────────────┼────────────────────────────────────────┤
-    │ • Local process communication   │ • Remote HTTP communication           │
-    │ • Claude Desktop plugins        │ • Browser/Web applications ◄── Demo   │
-    │ • Parent-child process stdin/   │ • Server-Sent Events over HTTP         │
-    │   stdout pipe                   │ • Bidirectional: POST requests +      │
-    │ • Unidirectional: commands      │   SSE notifications                   │
-    │   sent via stdin, responses     │                                        │
-    │   received via stdout           │                                        │
-    ├─────────────────────────────────┼────────────────────────────────────────┤
-    │ Example:                        │ Example:                               │
-    │ Claude Desktop ──stdin──► MCP   │ Browser ──POST /mcp──► MCP Server     │
-    │ Server (plugin)      ◄─stdout─┘                    │                     │
-    │                                 │         ◄──SSE /sse── Browser        │
-    └─────────────────────────────────┴────────────────────────────────────────┘
-
-    ============================================================================
-    MCP vs @tool Decorator (Comparison)
-    ============================================================================
-
-    ┌─────────────────────┬─────────────────────────┬─────────────────────────┐
-    │      Feature        │    MCP Protocol         │  @tool Decorator        │
-    ├─────────────────────┼─────────────────────────┼─────────────────────────┤
-    │ Definition          │ JSON Schema based       │ Python function wrapper │
-    │ Tool Discovery      │ tools/list RPC          │ Direct function call     │
-    │ Transport            │ stdio / SSE / HTTP      │ Direct function call     │
-    │ Schema Validation    │ Built-in JSON Schema    │ Type hints (optional)    │
-    │ Cross-Language       │ Yes (universal)         │ Python only              │
-    │ Use Case             │ AI ↔ Tools (universal)  │ Python scripts           │
-    │ Protocol Overhead    │ JSON-RPC 2.0 format     │ None (direct call)       │
-    └─────────────────────┴─────────────────────────┴─────────────────────────┘
-
-    ============================================================================
-    -->
-
     <!-- Vue3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <!-- Tailwind CSS CDN -->
@@ -125,10 +48,6 @@
         }
 
         /* Button styles */
-        .btn-primary {
-            @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 font-medium;
-        }
-
         .btn-secondary {
             @apply px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors duration-200 font-medium;
         }
